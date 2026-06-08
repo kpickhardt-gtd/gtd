@@ -2377,6 +2377,14 @@ async function gdriveCreateFile(folderId, filename, content) {
   return (await resp.json()).id;
 }
 
+// Rolling backup schedule: 30 min, 1 hr, 1 day, 1 week
+const BACKUP_SCHEDULES = [
+  { name: '30min', filename: 'gtd-backup-30min.json',  intervalMs: 30 * 60 * 1000 },
+  { name: '1hr',   filename: 'gtd-backup-1hr.json',    intervalMs: 60 * 60 * 1000 },
+  { name: '1day',  filename: 'gtd-backup-1day.json',   intervalMs: 24 * 60 * 60 * 1000 },
+  { name: '1week', filename: 'gtd-backup-1week.json',  intervalMs: 7 * 24 * 60 * 60 * 1000 },
+];
+
 // Time-based rolling backups — same schedule as FSA version but writes to Drive
 async function runDriveBackups(stateJson) {
   if (!gdriveFolderId || !gdriveToken) return;
