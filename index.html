@@ -2419,6 +2419,38 @@ async function loadFromDrive() {
   }
 }
 
+// Three-option dialog: copy current list / start blank / cancel
+function showFolderChoiceDialog(folderName) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+      <div style="background:var(--surface,#fff);border-radius:12px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:inherit;">
+        <div style="font-size:1rem;font-weight:600;margin-bottom:8px;">No task list found</div>
+        <div style="font-size:0.88rem;color:var(--muted);margin-bottom:22px;">
+          The folder <strong>${escapeHtml(folderName)}</strong> doesn't contain a task list yet. How would you like to start?
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <button id="fc-copy" style="padding:10px 16px;border-radius:8px;border:1px solid var(--border);background:var(--accent,#2563eb);color:#fff;font-size:0.88rem;font-weight:600;cursor:pointer;text-align:left;">
+            📋 Copy current list here
+            <div style="font-size:0.78rem;font-weight:400;opacity:0.85;margin-top:2px;">Creates a copy of your open list in this folder</div>
+          </button>
+          <button id="fc-blank" style="padding:10px 16px;border-radius:8px;border:1px solid var(--border);background:var(--surface-raised,#f9fafb);color:var(--text);font-size:0.88rem;font-weight:600;cursor:pointer;text-align:left;">
+            ✨ Start a blank list
+            <div style="font-size:0.78rem;font-weight:400;color:var(--muted);margin-top:2px;">Creates a fresh empty GTD list in this folder</div>
+          </button>
+          <button id="fc-cancel" style="padding:8px 16px;border-radius:8px;border:none;background:none;color:var(--muted);font-size:0.85rem;cursor:pointer;">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const cleanup = result => { document.body.removeChild(overlay); resolve(result); };
+    overlay.querySelector('#fc-copy').onclick   = () => cleanup('copy');
+    overlay.querySelector('#fc-blank').onclick  = () => cleanup('blank');
+    overlay.querySelector('#fc-cancel').onclick = () => cleanup('cancel');
+    overlay.addEventListener('click', e => { if (e.target === overlay) cleanup('cancel'); });
+  });
+}
+
 // Main connect function — authenticate, pick folder, load or create file
 async function connectGoogleDrive() {
   if (!isGdriveConfigured()) {
