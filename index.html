@@ -2205,26 +2205,16 @@ function isGdriveConfigured() {
          GDRIVE_API_KEY   !== 'REPLACE_WITH_YOUR_API_KEY';
 }
 
-// Load GIS + gapi scripts on first use
+// Load GIS script only — no gapi/Picker dependency
 async function loadGdriveLibs() {
-  const load = src => new Promise((res, rej) => {
+  if (window.google?.accounts?.oauth2) return;
+  await new Promise((res, rej) => {
     const s = document.createElement('script');
-    s.src = src;
+    s.src = 'https://accounts.google.com/gsi/client';
     s.onload = res;
-    s.onerror = () => rej(new Error('Failed to load: ' + src));
+    s.onerror = () => rej(new Error('Failed to load Google sign-in library'));
     document.head.appendChild(s);
   });
-  if (!window.google?.accounts?.oauth2) {
-    await load('https://accounts.google.com/gsi/client');
-  }
-  if (!window.gapi) {
-    await load('https://apis.googleapis.com/js/api.js');
-  }
-  if (!window.google?.picker) {
-    await new Promise((res, rej) => {
-      gapi.load('picker', { callback: res, onerror: e => rej(new Error('Picker load failed: ' + e)) });
-    });
-  }
 }
 
 async function initGdriveTokenClient() {
@@ -2262,25 +2252,48 @@ async function gdriveFetch(url, opts = {}, retry = true) {
   return resp;
 }
 
-// Show Google Picker to select a Drive folder
+// Show folder ID entry dialog (no gapi/Picker dependency)
 function gdrivePickFolder() {
   return new Promise((resolve, reject) => {
-    const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
-      .setSelectFolderEnabled(true)
-      .setMimeTypes('application/vnd.google-apps.folder');
-    new google.picker.PickerBuilder()
-      .setOAuthToken(gdriveToken)
-      .setDeveloperKey(GDRIVE_API_KEY)
-      .setTitle('Select a folder for your task list')
-      .addView(view)
-      .setCallback(data => {
-        if (data.action === google.picker.Action.PICKED)
-          resolve({ id: data.docs[0].id, name: data.docs[0].name });
-        else if (data.action === google.picker.Action.CANCEL)
-          reject(new Error('AbortError'));
-      })
-      .build()
-      .setVisible(true);
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+      <div style="background:var(--surface,#fff);border-radius:12px;padding:28px 32px;max-width:480px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:inherit;">
+        <div style="font-size:1rem;font-weight:600;margin-bottom:8px;">Connect a Google Drive folder</div>
+        <div style="font-size:0.85rem;color:var(--muted);margin-bottom:16px;">
+          Open <a href="https://drive.google.com" target="_blank" style="color:var(--accent);">Google Drive</a>,
+          navigate to the folder you want to use, and copy the folder ID from the URL.<br><br>
+          The URL looks like:<br>
+          <code style="font-size:0.78rem;background:var(--surface-raised,#f3f4f6);padding:3px 6px;border-radius:4px;display:block;margin-top:6px;word-break:break-all;">
+            drive.google.com/drive/folders/<strong>THIS_IS_YOUR_FOLDER_ID</strong>
+          </code>
+        </div>
+        <div style="margin-bottom:8px;font-size:0.85rem;font-weight:500;">Folder ID:</div>
+        <input id="gdrive-folder-id-input" type="text" placeholder="Paste folder ID here"
+          style="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;font-family:ui-monospace,monospace;margin-bottom:16px;" />
+        <div style="margin-bottom:8px;font-size:0.85rem;font-weight:500;">Folder name (for display):</div>
+        <input id="gdrive-folder-name-input" type="text" placeholder="e.g. GTD Task Management"
+          style="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;margin-bottom:20px;" />
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button id="gdrive-folder-cancel" class="btn secondary" style="font-size:0.88rem;">Cancel</button>
+          <button id="gdrive-folder-connect" class="btn" style="font-size:0.88rem;background:var(--accent,#2563eb);color:#fff;">Connect</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const cleanup = () => document.body.removeChild(overlay);
+    overlay.querySelector('#gdrive-folder-cancel').onclick = () => { cleanup(); reject(new Error('AbortError')); };
+    overlay.querySelector('#gdrive-folder-connect').onclick = () => {
+      const id   = overlay.querySelector('#gdrive-folder-id-input').value.trim();
+      const name = overlay.querySelector('#gdrive-folder-name-input').value.trim() || id;
+      if (!id) { overlay.querySelector('#gdrive-folder-id-input').style.borderColor = '#dc2626'; return; }
+      cleanup();
+      resolve({ id, name });
+    };
+    overlay.querySelector('#gdrive-folder-id-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') overlay.querySelector('#gdrive-folder-connect').click();
+      if (e.key === 'Escape') { cleanup(); reject(new Error('AbortError')); }
+    });
+    setTimeout(() => overlay.querySelector('#gdrive-folder-id-input').focus(), 100);
   });
 }
 
