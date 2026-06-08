@@ -94,7 +94,7 @@
     align-items: flex-start;
     min-height: calc(100vh - 72px);
   }
-  nav {
+  nav#nav {
     width: 192px;
     flex-shrink: 0;
     background: var(--surface);
@@ -110,7 +110,7 @@
     overflow-x: hidden;
     z-index: 10;
   }
-  nav button {
+  nav#nav button {
     background: transparent;
     border: none;
     border-left: 3px solid transparent;
@@ -129,14 +129,14 @@
     font-family: inherit;
     transition: background 0.1s, color 0.1s;
   }
-  nav button:hover { color: var(--text); background: var(--surface-raised, #f9fafb); }
-  nav button.active {
+  nav#nav button:hover { color: var(--text); background: var(--surface-raised, #f9fafb); }
+  nav#nav button.active {
     color: var(--primary);
     border-left-color: var(--primary);
     background: var(--primary-soft);
     font-weight: 600;
   }
-  nav .count {
+  nav#nav .count {
     background: var(--chip-bg);
     color: var(--muted);
     font-size: 11px;
@@ -145,11 +145,11 @@
     font-weight: 600;
     flex-shrink: 0;
   }
-  nav button.active .count {
+  nav#nav button.active .count {
     background: var(--primary-soft);
     color: var(--primary);
   }
-  nav .nav-section-label {
+  nav#nav .nav-section-label {
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.07em;
@@ -883,25 +883,30 @@
   #mobile-more-overlay { display: none; }
 
   @media (max-width: 768px) {
-    /* Hide sidebar completely — no width, no scroll */
-    #nav { display: none !important; width: 0 !important; overflow: hidden !important; }
+    /* Sidebar: fully removed from layout */
+    #nav { display: none !important; width: 0 !important; min-width: 0 !important;
+           overflow: hidden !important; position: absolute !important; left: -9999px !important; }
+    .app-layout { display: block !important; }
+
     /* Show mobile chrome */
     #mobile-nav { display: flex; }
     #mobile-home-btn { display: flex !important; }
     #mobile-menu-btn { display: flex !important; }
-    .app-layout { display: block; }
 
-    /* Header: stack title + capture vertically */
+    /* Header: row 1 = title + buttons, row 2 = capture */
     header {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 8px;
-      padding: 10px 14px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      grid-template-rows: auto auto;
+      gap: 8px 6px;
+      padding: 10px 12px;
+      align-items: center;
     }
-    header h1 { font-size: 1.1rem; }
-    header > div:first-child { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    header > div:first-child { grid-column: 1; grid-row: 1; }
+    header > div:last-child  { grid-column: 2; grid-row: 1; align-self: start; margin-top: 2px; }
+    header .quick-capture    { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+    header h1 { font-size: 1rem; margin: 0; }
     header .meta { display: none; }
-    .quick-capture { width: 100%; }
     .quick-capture input { font-size: 16px; /* prevent iOS zoom */ }
 
     /* Main content — full width, room for bottom bar */
@@ -2349,13 +2354,11 @@ function setCloudStatus(s, msg) {
       synced: '✓ Synced',
       syncing: '↻ Saving…',
       error: '⚠ Sync error',
-      unsupported: '💾 Cloud sync unsupported by this browser'
     };
     const cls = {
       init: 'status-init', no_folder: 'status-warn',
       connecting: 'status-init', synced: 'status-ok',
-      syncing: 'status-init', error: 'status-err',
-      unsupported: 'status-warn'
+      syncing: 'status-init', error: 'status-err'
     };
     el.textContent = (labels[s] || s) + (msg ? ' — ' + msg : (cloudFolderName && s === 'synced' ? ' · ' + cloudFolderName : ''));
     el.className = 'cloud-sync-indicator ' + (cls[s] || '');
@@ -5207,8 +5210,16 @@ function setBootMsg(msg) {
 
 async function bootstrap() {
   try {
+    // If Drive sync is configured, initDriveOnLoad handles everything — skip FSA bootstrap
+    if (localStorage.getItem(STORAGE_KEY + ':gdriveFileId')) {
+      hideBootLoading();
+      return;
+    }
     if (!fsaSupported()) {
-      setCloudStatus('unsupported');
+      setCloudStatus('no_folder', 'tap 🔗 Connect to sync via Google Drive');
+      hideBootLoading();
+      render();
+      restoreTab();
       return;
     }
     setBootMsg('Checking for cloud sync…');
