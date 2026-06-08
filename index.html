@@ -874,6 +874,207 @@
   .goal-badge.paused   { background: #fef9c3; color: #854d0e; }
   .goal-badge.achieved { background: #dbeafe; color: #1d4ed8; }
 
+  /* ═══════════════════════════════════════════════
+     MOBILE LAYOUT  (≤ 768px)
+  ═══════════════════════════════════════════════ */
+  #mobile-nav       { display: none; }
+  #mobile-more-drawer { display: none; }
+  #mobile-more-overlay { display: none; }
+
+  @media (max-width: 768px) {
+    /* Hide sidebar, show bottom nav */
+    #nav { display: none !important; }
+    #mobile-nav { display: flex; }
+    .app-layout { display: block; }
+
+    /* Header: stack title + capture vertically */
+    header {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+      padding: 10px 14px;
+    }
+    header h1 { font-size: 1.1rem; }
+    header > div:first-child { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    header .meta { display: none; }
+    .quick-capture { width: 100%; }
+    .quick-capture input { font-size: 16px; /* prevent iOS zoom */ }
+    .help-btn { position: absolute; top: 12px; right: 14px; }
+
+    /* Main content — full width, room for bottom bar */
+    main {
+      width: 100%;
+      padding: 12px 14px 90px;
+    }
+
+    /* Section headers — stack on small screens */
+    .section-header { flex-wrap: wrap; gap: 8px; }
+
+    /* Forms — single column */
+    .add-form { padding: 14px; }
+    .add-form .form-row,
+    .form-row { flex-direction: column; gap: 8px; }
+    .add-form select,
+    .add-form input[type="text"],
+    .add-form input[type="date"],
+    .add-form textarea { font-size: 16px; width: 100%; box-sizing: border-box; }
+
+    /* Filter chips — horizontal scroll instead of wrap */
+    .filter-bar,
+    .context-filters,
+    [class*="filter"] { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+
+    /* Cards */
+    .card { padding: 14px; }
+    .dashboard-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .stat-card { padding: 10px 8px; }
+    .stat-card .stat-number { font-size: 1.4rem; }
+
+    /* Item cards — full width, easier tap targets */
+    .item-card { padding: 12px; }
+    .item-card .card-actions { flex-wrap: wrap; gap: 6px; }
+    .item-card .card-actions button { min-height: 36px; padding: 6px 12px; }
+
+    /* Modals — full screen */
+    .modal-overlay,
+    [class*="modal"] > div:not([class]) {
+      width: 100% !important;
+      max-width: 100% !important;
+      height: 100% !important;
+      max-height: 100% !important;
+      border-radius: 0 !important;
+      margin: 0 !important;
+    }
+    .help-modal-inner {
+      flex-direction: column;
+      height: 100vh;
+      border-radius: 0;
+    }
+    .help-nav { width: 100%; height: auto; border-right: none; border-bottom: 1px solid var(--border); display: flex; flex-direction: row; overflow-x: auto; padding: 4px; gap: 2px; flex-shrink: 0; }
+    .help-nav-item { white-space: nowrap; border-left: none !important; border-bottom: 3px solid transparent; padding: 8px 12px; }
+    .help-nav-item.active { border-bottom-color: var(--accent); border-left-color: transparent !important; }
+    .help-content { flex: 1; overflow-y: auto; }
+
+    /* Bottom tab bar */
+    #mobile-nav {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 60px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      z-index: 200;
+      align-items: stretch;
+      box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+    }
+    #mobile-nav button {
+      flex: 1;
+      background: transparent;
+      border: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      font-size: 10px;
+      color: var(--muted);
+      font-family: inherit;
+      cursor: pointer;
+      padding: 6px 0;
+      position: relative;
+    }
+    #mobile-nav button.active { color: var(--primary); }
+    #mobile-nav button .mob-icon { font-size: 20px; line-height: 1; }
+    #mobile-nav button .mob-label { font-size: 10px; font-weight: 500; }
+    #mobile-nav button .mob-badge {
+      position: absolute;
+      top: 5px;
+      right: calc(50% - 18px);
+      background: var(--primary);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      min-width: 16px;
+      height: 16px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 3px;
+    }
+
+    /* More drawer — slides up from bottom */
+    #mobile-more-overlay {
+      display: block;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 300;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+    #mobile-more-overlay.open { opacity: 1; pointer-events: all; }
+    #mobile-more-drawer {
+      display: block;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: var(--surface);
+      border-radius: 16px 16px 0 0;
+      z-index: 301;
+      padding: 8px 0 40px;
+      transform: translateY(100%);
+      transition: transform 0.25s ease;
+      box-shadow: 0 -4px 24px rgba(0,0,0,0.15);
+    }
+    #mobile-more-drawer.open { transform: translateY(0); }
+    #mobile-more-drawer .drawer-handle {
+      width: 36px; height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin: 6px auto 14px;
+    }
+    #mobile-more-drawer button {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+      padding: 13px 22px;
+      background: transparent;
+      border: none;
+      font-size: 15px;
+      color: var(--text);
+      font-family: inherit;
+      cursor: pointer;
+      text-align: left;
+    }
+    #mobile-more-drawer button:active { background: var(--surface-raised, #f9fafb); }
+    #mobile-more-drawer button .drawer-icon { font-size: 18px; width: 24px; text-align: center; }
+    #mobile-more-drawer button .drawer-badge {
+      margin-left: auto;
+      background: var(--chip-bg, #e5e7eb);
+      color: var(--chip-text, #374151);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 10px;
+    }
+    #mobile-more-drawer .drawer-section-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 10px 22px 4px;
+    }
+    #mobile-more-drawer .drawer-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 6px 22px;
+    }
+
+    /* Sync warning banner on mobile */
+    #sync-warning-banner { font-size: 0.8rem; padding: 10px 12px; }
+  }
 </style>
 </head>
 <body>
@@ -884,6 +1085,10 @@
 </div>
 <style>@keyframes bootspin { to { transform: rotate(360deg); } }</style>
 
+<div id="sync-warning-banner" style="display:none;position:sticky;top:0;z-index:999;background:#dc2626;color:#fff;text-align:center;padding:10px 16px;font-size:0.9rem;font-weight:600;">
+  ⚠ Changes saved locally only — not synced to Drive.
+  <button onclick="connectGoogleDrive()" style="margin-left:12px;background:#fff;color:#dc2626;border:none;border-radius:6px;padding:4px 12px;font-weight:700;cursor:pointer;">Reconnect now</button>
+</div>
 <header>
   <div>
     <h1>Kevin's GTD System</h1>
@@ -2153,6 +2358,12 @@ function setCloudStatus(s, msg) {
     info.textContent = cloudFolderName
       ? 'Connected folder: ' + cloudFolderName + (cloudLastSavedAt ? ' · last saved ' + new Date(cloudLastSavedAt).toLocaleTimeString() : '')
       : 'No folder connected yet. Click "🔗 Connect cloud folder" to enable auto-sync.';
+  }
+  // Show sticky warning banner when Drive is configured but saves are falling back to local-only
+  const banner = document.getElementById('sync-warning-banner');
+  if (banner) {
+    const localOnly = s === 'error' && gdriveFileId && !gdriveToken;
+    banner.style.display = localOnly ? 'block' : 'none';
   }
 }
 
@@ -5048,6 +5259,132 @@ async function bootstrap() {
 
 bootstrap();
 
+// ─── Mobile nav helpers ───────────────────────────────────────────────────
+function toggleMobileMore() {
+  const drawer  = document.getElementById('mobile-more-drawer');
+  const overlay = document.getElementById('mobile-more-overlay');
+  const isOpen  = drawer.classList.contains('open');
+  if (isOpen) { closeMobileMore(); } else {
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+  }
+}
+function closeMobileMore() {
+  document.getElementById('mobile-more-drawer')?.classList.remove('open');
+  document.getElementById('mobile-more-overlay')?.classList.remove('open');
+}
+
+// Keep mobile bottom-bar active state in sync with tab switching
+const _origSwitchTab = switchTab;
+switchTab = function(tab) {
+  _origSwitchTab(tab);
+  closeMobileMore();
+  document.querySelectorAll('#mobile-nav button').forEach(b => b.classList.remove('active'));
+  const map = { dashboard:'mob-btn-dashboard', inbox:'mob-btn-inbox', next:'mob-btn-next', projects:'mob-btn-projects' };
+  const btn = document.getElementById(map[tab]);
+  if (btn) btn.classList.add('active');
+  else document.getElementById('mob-btn-more')?.classList.add('active');
+};
+
+// Mirror counts to mobile badges
+function updateMobileBadges() {
+  const pairs = [
+    ['count-inbox',     'mob-count-inbox'],
+    ['count-next',      'mob-count-next'],
+    ['count-projects',  'mob-count-projects'],
+    ['count-waiting',   'mob-count-waiting2'],
+    ['count-calendar',  'mob-count-calendar2'],
+    ['count-someday',   'mob-count-someday2'],
+    ['count-sessionlog','mob-count-sessionlog2'],
+  ];
+  pairs.forEach(([src, dest]) => {
+    const srcEl  = document.getElementById(src);
+    const destEl = document.getElementById(dest);
+    if (!srcEl || !destEl) return;
+    const n = parseInt(srcEl.textContent, 10) || 0;
+    destEl.textContent = n > 0 ? n : '';
+    if (destEl.id.startsWith('mob-count-inbox') || destEl.id.startsWith('mob-count-next') || destEl.id.startsWith('mob-count-projects')) {
+      destEl.style.display = n > 0 ? 'flex' : 'none';
+    }
+  });
+}
+
+// Patch render() to also update mobile badges
+const _origRender = render;
+render = function() {
+  _origRender();
+  updateMobileBadges();
+};
+
 </script>
+
+<!-- ══════════ MOBILE BOTTOM NAV ══════════ -->
+<nav id="mobile-nav" aria-label="Mobile navigation">
+  <button onclick="switchTab('dashboard')" id="mob-btn-dashboard" class="active">
+    <span class="mob-icon">🏠</span>
+    <span class="mob-label">Dashboard</span>
+  </button>
+  <button onclick="switchTab('inbox')" id="mob-btn-inbox">
+    <span class="mob-icon">📥</span>
+    <span class="mob-badge" id="mob-count-inbox" style="display:none"></span>
+    <span class="mob-label">Inbox</span>
+  </button>
+  <button onclick="switchTab('next')" id="mob-btn-next">
+    <span class="mob-icon">✅</span>
+    <span class="mob-badge" id="mob-count-next" style="display:none"></span>
+    <span class="mob-label">Actions</span>
+  </button>
+  <button onclick="switchTab('projects')" id="mob-btn-projects">
+    <span class="mob-icon">📁</span>
+    <span class="mob-badge" id="mob-count-projects" style="display:none"></span>
+    <span class="mob-label">Projects</span>
+  </button>
+  <button onclick="toggleMobileMore()" id="mob-btn-more">
+    <span class="mob-icon">☰</span>
+    <span class="mob-label">More</span>
+  </button>
+</nav>
+
+<!-- ══════════ MOBILE MORE DRAWER ══════════ -->
+<div id="mobile-more-overlay" onclick="closeMobileMore()"></div>
+<div id="mobile-more-drawer" role="dialog" aria-label="More navigation">
+  <div class="drawer-handle"></div>
+  <div class="drawer-section-label">Lists</div>
+  <button onclick="switchTab('waiting');closeMobileMore()">
+    <span class="drawer-icon">⏳</span> Waiting For
+    <span class="drawer-badge" id="mob-count-waiting2"></span>
+  </button>
+  <button onclick="switchTab('calendar');closeMobileMore()">
+    <span class="drawer-icon">📅</span> Calendar
+    <span class="drawer-badge" id="mob-count-calendar2"></span>
+  </button>
+  <button onclick="switchTab('someday');closeMobileMore()">
+    <span class="drawer-icon">💡</span> Someday / Maybe
+    <span class="drawer-badge" id="mob-count-someday2"></span>
+  </button>
+  <button onclick="switchTab('areas');closeMobileMore()">
+    <span class="drawer-icon">🎯</span> Areas of Focus
+  </button>
+  <button onclick="switchTab('horizons');closeMobileMore()">
+    <span class="drawer-icon">🔭</span> Goals &amp; Horizons
+  </button>
+  <div class="drawer-divider"></div>
+  <div class="drawer-section-label">Reflect</div>
+  <button onclick="switchTab('sessionlog');closeMobileMore()">
+    <span class="drawer-icon">📓</span> Session Log
+    <span class="drawer-badge" id="mob-count-sessionlog2"></span>
+  </button>
+  <button onclick="switchTab('review');closeMobileMore()">
+    <span class="drawer-icon">🔄</span> Review
+  </button>
+  <div class="drawer-divider"></div>
+  <button onclick="connectGoogleDrive();closeMobileMore()">
+    <span class="drawer-icon">🔗</span> Connect / Reconnect Drive
+  </button>
+  <button onclick="openHelp();closeMobileMore()">
+    <span class="drawer-icon">❓</span> Help
+  </button>
+</div>
+
 </body>
 </html>
