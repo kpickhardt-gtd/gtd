@@ -2207,15 +2207,20 @@ function isGdriveConfigured() {
 
 // Load GIS + gapi scripts on first use
 async function loadGdriveLibs() {
-  if (window.google?.accounts?.oauth2) return;
   const load = src => new Promise((res, rej) => {
     const s = document.createElement('script');
     s.src = src; s.onload = res; s.onerror = rej;
     document.head.appendChild(s);
   });
-  await load('https://accounts.google.com/gsi/client');
-  await load('https://apis.googleapis.com/js/api.js');
-  await new Promise(res => gapi.load('picker', res));
+  if (!window.google?.accounts?.oauth2) {
+    await load('https://accounts.google.com/gsi/client');
+  }
+  if (!window.gapi) {
+    await load('https://apis.googleapis.com/js/api.js');
+  }
+  if (!window.google?.picker) {
+    await new Promise(res => gapi.load('picker', res));
+  }
 }
 
 async function initGdriveTokenClient() {
