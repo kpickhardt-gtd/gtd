@@ -2025,7 +2025,7 @@ function setCloudFolderName(name) {
   } else {
     localStorage.removeItem(STORAGE_KEY + ':folderName');
   }
-  renderFolderStatus();
+  setCloudStatus(cloudSyncStatus);
 }
 let cloudSaveTimer = null;
 let cloudLastSavedAt = null;
