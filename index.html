@@ -883,9 +883,11 @@
   #mobile-more-overlay { display: none; }
 
   @media (max-width: 768px) {
-    /* Hide sidebar, show bottom nav + hamburger */
-    #nav { display: none !important; }
+    /* Hide sidebar completely — no width, no scroll */
+    #nav { display: none !important; width: 0 !important; overflow: hidden !important; }
+    /* Show mobile chrome */
     #mobile-nav { display: flex; }
+    #mobile-home-btn { display: flex !important; }
     #mobile-menu-btn { display: flex !important; }
     .app-layout { display: block; }
 
@@ -901,7 +903,6 @@
     header .meta { display: none; }
     .quick-capture { width: 100%; }
     .quick-capture input { font-size: 16px; /* prevent iOS zoom */ }
-    .help-btn { position: absolute; top: 12px; right: 14px; }
 
     /* Main content — full width, room for bottom bar */
     main {
@@ -1104,8 +1105,9 @@
     <button class="btn" onclick="quickCapture()">Capture</button>
   </div>
   <div style="display:flex;gap:6px;align-items:center;">
-    <button class="help-btn" onclick="openHelp()" title="Help &amp; Documentation (?)">?</button>
+    <button id="mobile-home-btn" class="help-btn" onclick="mobileNav('dashboard')" title="Dashboard" style="display:none;font-size:18px;line-height:1;">🏠</button>
     <button id="mobile-menu-btn" class="help-btn" onclick="toggleMobileMore()" title="More navigation" style="display:none;font-size:18px;line-height:1;">☰</button>
+    <button class="help-btn" onclick="openHelp()" title="Help &amp; Documentation (?)">?</button>
   </div>
 </header>
 
@@ -2453,7 +2455,7 @@ async function saveToCloud() {
 }
 
 async function loadFromCloud() {
-  if (!fsaSupported()) { setCloudStatus('unsupported'); return null; }
+  if (!fsaSupported()) { setCloudStatus('no_folder', 'tap 🔗 Connect to sync via Google Drive'); return null; }
   if (!cloudFolderHandle) { setCloudStatus('no_folder'); return null; }
   if (!await ensurePermission(cloudFolderHandle, false)) { setCloudStatus('error', 'permission denied'); return null; }
   setCloudStatus('connecting');
@@ -3017,7 +3019,7 @@ async function pollCloudOnce() {
 
 // ----- User-facing actions -----
 async function pickCloudFolder() {
-  if (!fsaSupported()) { setCloudStatus('unsupported'); return; }
+  if (!fsaSupported()) { setCloudStatus('no_folder', 'tap 🔗 Connect to sync via Google Drive'); return; }
   try {
     const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
     cloudFolderHandle = handle;
