@@ -883,9 +883,10 @@
   #mobile-more-overlay { display: none; }
 
   @media (max-width: 768px) {
-    /* Hide sidebar, show bottom nav */
+    /* Hide sidebar, show bottom nav + hamburger */
     #nav { display: none !important; }
     #mobile-nav { display: flex; }
+    #mobile-menu-btn { display: flex !important; }
     .app-layout { display: block; }
 
     /* Header: stack title + capture vertically */
@@ -1102,7 +1103,10 @@
     <input type="text" id="quickCaptureInput" placeholder="Brain-dump straight to Inbox… (Enter to save)" />
     <button class="btn" onclick="quickCapture()">Capture</button>
   </div>
-  <button class="help-btn" onclick="openHelp()" title="Help &amp; Documentation (?)">?</button>
+  <div style="display:flex;gap:6px;align-items:center;">
+    <button class="help-btn" onclick="openHelp()" title="Help &amp; Documentation (?)">?</button>
+    <button id="mobile-menu-btn" class="help-btn" onclick="toggleMobileMore()" title="More navigation" style="display:none;font-size:18px;line-height:1;">☰</button>
+  </div>
 </header>
 
 <!-- ══════════ HELP MODAL ══════════ -->
@@ -2420,7 +2424,7 @@ async function ensurePermission(handle, write) {
 
 // ----- Save / Load via File System Access -----
 async function saveToCloud() {
-  if (!fsaSupported()) { setCloudStatus('unsupported'); return false; }
+  if (!fsaSupported()) { setCloudStatus('no_folder', 'tap 🔗 Connect to sync via Google Drive'); return false; }
   if (!cloudFolderHandle) { setCloudStatus('no_folder'); return false; }
   // Safety guard: never write default sample data to cloud before bootstrap
   // has confirmed what is actually in the cloud file.
@@ -5265,7 +5269,8 @@ bootstrap();
 function toggleMobileMore() {
   const drawer  = document.getElementById('mobile-more-drawer');
   const overlay = document.getElementById('mobile-more-overlay');
-  const isOpen  = drawer.classList.contains('open');
+  if (!drawer) return;
+  const isOpen = drawer.classList.contains('open');
   if (isOpen) { closeMobileMore(); } else {
     drawer.classList.add('open');
     overlay.classList.add('open');
@@ -5276,45 +5281,45 @@ function closeMobileMore() {
   document.getElementById('mobile-more-overlay')?.classList.remove('open');
 }
 
-// Keep mobile bottom-bar active state in sync with tab switching
-const _origSwitchTab = switchTab;
-switchTab = function(tab) {
-  _origSwitchTab(tab);
+// Navigate to a tab and update mobile bottom bar active state
+function mobileNav(tab) {
+  navigateToTab(tab);
   closeMobileMore();
   document.querySelectorAll('#mobile-nav button').forEach(b => b.classList.remove('active'));
   const map = { dashboard:'mob-btn-dashboard', inbox:'mob-btn-inbox', next:'mob-btn-next', projects:'mob-btn-projects' };
-  const btn = document.getElementById(map[tab]);
-  if (btn) btn.classList.add('active');
+  const btnId = map[tab];
+  if (btnId) document.getElementById(btnId)?.classList.add('active');
   else document.getElementById('mob-btn-more')?.classList.add('active');
-};
+}
 
-// Mirror counts to mobile badges
+// Mirror counts to mobile badges after every render
 function updateMobileBadges() {
   const pairs = [
-    ['count-inbox',     'mob-count-inbox'],
-    ['count-next',      'mob-count-next'],
-    ['count-projects',  'mob-count-projects'],
-    ['count-waiting',   'mob-count-waiting2'],
-    ['count-calendar',  'mob-count-calendar2'],
-    ['count-someday',   'mob-count-someday2'],
-    ['count-sessionlog','mob-count-sessionlog2'],
+    ['count-inbox',      'mob-count-inbox'],
+    ['count-next',       'mob-count-next'],
+    ['count-projects',   'mob-count-projects'],
+    ['count-waiting',    'mob-count-waiting2'],
+    ['count-calendar',   'mob-count-calendar2'],
+    ['count-someday',    'mob-count-someday2'],
+    ['count-sessionlog', 'mob-count-sessionlog2'],
   ];
   pairs.forEach(([src, dest]) => {
     const srcEl  = document.getElementById(src);
     const destEl = document.getElementById(dest);
     if (!srcEl || !destEl) return;
     const n = parseInt(srcEl.textContent, 10) || 0;
-    destEl.textContent = n > 0 ? n : '';
-    if (destEl.id.startsWith('mob-count-inbox') || destEl.id.startsWith('mob-count-next') || destEl.id.startsWith('mob-count-projects')) {
+    destEl.textContent = n > 0 ? String(n) : '';
+    // Bottom bar badges use flex; drawer badges are always visible when non-zero
+    if (['mob-count-inbox','mob-count-next','mob-count-projects'].includes(dest)) {
       destEl.style.display = n > 0 ? 'flex' : 'none';
     }
   });
 }
 
-// Patch render() to also update mobile badges
-const _origRender = render;
-render = function() {
-  _origRender();
+// Hook into render so mobile badges stay current
+const _renderOrig = render;
+render = function(...args) {
+  _renderOrig(...args);
   updateMobileBadges();
 };
 
@@ -5322,21 +5327,21 @@ render = function() {
 
 <!-- ══════════ MOBILE BOTTOM NAV ══════════ -->
 <nav id="mobile-nav" aria-label="Mobile navigation">
-  <button onclick="switchTab('dashboard')" id="mob-btn-dashboard" class="active">
+  <button onclick="mobileNav('dashboard')" id="mob-btn-dashboard" class="active">
     <span class="mob-icon">🏠</span>
     <span class="mob-label">Dashboard</span>
   </button>
-  <button onclick="switchTab('inbox')" id="mob-btn-inbox">
+  <button onclick="mobileNav('inbox')" id="mob-btn-inbox">
     <span class="mob-icon">📥</span>
     <span class="mob-badge" id="mob-count-inbox" style="display:none"></span>
     <span class="mob-label">Inbox</span>
   </button>
-  <button onclick="switchTab('next')" id="mob-btn-next">
+  <button onclick="mobileNav('next')" id="mob-btn-next">
     <span class="mob-icon">✅</span>
     <span class="mob-badge" id="mob-count-next" style="display:none"></span>
     <span class="mob-label">Actions</span>
   </button>
-  <button onclick="switchTab('projects')" id="mob-btn-projects">
+  <button onclick="mobileNav('projects')" id="mob-btn-projects">
     <span class="mob-icon">📁</span>
     <span class="mob-badge" id="mob-count-projects" style="display:none"></span>
     <span class="mob-label">Projects</span>
@@ -5352,31 +5357,31 @@ render = function() {
 <div id="mobile-more-drawer" role="dialog" aria-label="More navigation">
   <div class="drawer-handle"></div>
   <div class="drawer-section-label">Lists</div>
-  <button onclick="switchTab('waiting');closeMobileMore()">
+  <button onclick="mobileNav('waiting')">
     <span class="drawer-icon">⏳</span> Waiting For
     <span class="drawer-badge" id="mob-count-waiting2"></span>
   </button>
-  <button onclick="switchTab('calendar');closeMobileMore()">
+  <button onclick="mobileNav('calendar')">
     <span class="drawer-icon">📅</span> Calendar
     <span class="drawer-badge" id="mob-count-calendar2"></span>
   </button>
-  <button onclick="switchTab('someday');closeMobileMore()">
+  <button onclick="mobileNav('someday')">
     <span class="drawer-icon">💡</span> Someday / Maybe
     <span class="drawer-badge" id="mob-count-someday2"></span>
   </button>
-  <button onclick="switchTab('areas');closeMobileMore()">
+  <button onclick="mobileNav('areas')">
     <span class="drawer-icon">🎯</span> Areas of Focus
   </button>
-  <button onclick="switchTab('horizons');closeMobileMore()">
+  <button onclick="mobileNav('horizons')">
     <span class="drawer-icon">🔭</span> Goals &amp; Horizons
   </button>
   <div class="drawer-divider"></div>
   <div class="drawer-section-label">Reflect</div>
-  <button onclick="switchTab('sessionlog');closeMobileMore()">
+  <button onclick="mobileNav('sessionlog')">
     <span class="drawer-icon">📓</span> Session Log
     <span class="drawer-badge" id="mob-count-sessionlog2"></span>
   </button>
-  <button onclick="switchTab('review');closeMobileMore()">
+  <button onclick="mobileNav('review')">
     <span class="drawer-icon">🔄</span> Review
   </button>
   <div class="drawer-divider"></div>
