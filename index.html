@@ -14,6 +14,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Kevin's GTD System</title>
 <script src="brand.js"></script>
 <style>
@@ -3105,7 +3106,8 @@ async function initCloudSync() {
   }
 
   // Fall back to File System Access API (legacy / local)
-  if (!fsaSupported()) { setCloudStatus('unsupported'); return; }
+  // On browsers without FSA (mobile Safari, Firefox) just prompt for Drive connection
+  if (!fsaSupported()) { setCloudStatus('no_folder', 'tap 🔗 Connect to sync via Google Drive'); return; }
   const handle = await idbGetHandle();
   if (!handle) { setCloudStatus('no_folder'); return; }
   cloudFolderHandle = handle;
