@@ -2400,10 +2400,20 @@ async function runDriveBackups(stateJson) {
 
 // Save current data to Drive
 async function saveToDrive(force = false) {
-  if (!gdriveFileId || !gdriveToken) return false;
   if (cloudDataProtected) { setCloudStatus('error', 'saves blocked — reload first'); return false; }
   if (!force && looksLikeDefaultData(data)) {
     setDataProtected('Save blocked: data looks like defaults. Reload to restore.');
+    return false;
+  }
+  // Always persist to localStorage so changes survive a token expiry / reconnect
+  try {
+    const now = new Date().toISOString();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(STORAGE_KEY + ':meta', JSON.stringify({ savedAt: now }));
+  } catch(e) {}
+  if (!gdriveFileId || !gdriveToken) {
+    // No token yet — data is safe in localStorage; Drive sync will push on reconnect
+    setCloudStatus('error', 'session expired — click 🔗 Connect to sync');
     return false;
   }
   setCloudStatus('syncing');
@@ -2415,7 +2425,7 @@ async function saveToDrive(force = false) {
     setCloudStatus('synced');
     return true;
   } catch(e) {
-    const msg = e.message === 'auth-expired' ? 'session expired — click Reconnect' : (e.message || 'save failed');
+    const msg = e.message === 'auth-expired' ? 'session expired — click 🔗 Connect to sync' : (e.message || 'save failed');
     setCloudStatus('error', msg);
     return false;
   }
@@ -2491,6 +2501,28 @@ async function connectGoogleDrive() {
   try {
     setCloudStatus('connecting', 'signing in to Google…');
     await gdriveGetToken(true);
+
+    // Quick reconnect: file ID already known — just reauth and sync without folder picker
+    if (gdriveFileId) {
+      driveSyncActive = true;
+      clearDataProtected();
+      // Check if local cache is newer than Drive (unsaved changes while token was expired)
+      let localSavedAt = '';
+      try { const m = localStorage.getItem(STORAGE_KEY + ':meta'); if (m) localSavedAt = JSON.parse(m).savedAt || ''; } catch(e) {}
+      const driveState = await loadFromDrive();
+      const driveSavedAt = driveState?.savedAt || '';
+      if (driveState?.data && driveSavedAt >= localSavedAt) {
+        // Drive is current or newer — load it
+        data = { ...clone(DEFAULT_DATA), ...driveState.data };
+        _persistAndRender(driveState.savedAt);
+      } else {
+        // Local cache has newer changes — push them to Drive
+        await saveToDrive(true);
+      }
+      setCloudStatus('synced', 'reconnected');
+      startCloudPolling();
+      return;
+    }
 
     setCloudStatus('connecting', 'pick a folder…');
     const folder = await gdrivePickFolder();
