@@ -2030,6 +2030,19 @@ function setCloudFolderName(name) {
 let cloudSaveTimer = null;
 let cloudLastSavedAt = null;
 let cloudBootstrapped = false; // true once we've confirmed a real cloud load
+let cloudDataProtected = false;
+let cloudDataProtectedMsg = '';
+
+function setDataProtected(msg) {
+  cloudDataProtected = true;
+  cloudDataProtectedMsg = msg || '';
+  setCloudStatus('error', msg || 'saves blocked');
+}
+
+function clearDataProtected() {
+  cloudDataProtected = false;
+  cloudDataProtectedMsg = '';
+}
 
 // Guard: returns true if in-memory data still looks like built-in sample set.
 // Blocks accidental cloud overwrites before bootstrap has loaded real data.
