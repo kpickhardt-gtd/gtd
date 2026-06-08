@@ -2209,7 +2209,9 @@ function isGdriveConfigured() {
 async function loadGdriveLibs() {
   const load = src => new Promise((res, rej) => {
     const s = document.createElement('script');
-    s.src = src; s.onload = res; s.onerror = rej;
+    s.src = src;
+    s.onload = res;
+    s.onerror = () => rej(new Error('Failed to load: ' + src));
     document.head.appendChild(s);
   });
   if (!window.google?.accounts?.oauth2) {
@@ -2219,7 +2221,9 @@ async function loadGdriveLibs() {
     await load('https://apis.googleapis.com/js/api.js');
   }
   if (!window.google?.picker) {
-    await new Promise(res => gapi.load('picker', res));
+    await new Promise((res, rej) => {
+      gapi.load('picker', { callback: res, onerror: e => rej(new Error('Picker load failed: ' + e)) });
+    });
   }
 }
 
@@ -2451,10 +2455,11 @@ async function connectGoogleDrive() {
     startCloudPolling();
 
   } catch(e) {
-    const cancelled = e.message === 'AbortError' || e.message?.includes('cancel');
+    const msg = e instanceof Error ? e.message : (e?.type ? 'Script load event error: ' + e.type : String(e));
+    const cancelled = msg === 'AbortError' || msg?.includes('cancel');
+    console.error('Drive connect error:', msg, e);
     setCloudStatus(cancelled ? (driveSyncActive ? 'synced' : 'no_folder') : 'error',
-                   cancelled ? 'cancelled' : (e.message || 'connection failed'));
-    if (!cancelled) console.error('Drive connect error:', e);
+                   cancelled ? 'cancelled' : msg || 'connection failed');
   }
 }
 
