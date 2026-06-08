@@ -2015,8 +2015,18 @@ const IDB_STORE = 'handles';
 const IDB_HANDLE_KEY = 'cloud-folder';
 
 let cloudFolderHandle = null;
-let cloudFolderName = null;
+let cloudFolderName = localStorage.getItem(STORAGE_KEY + ':folderName') || null;
 let cloudSyncStatus = 'init';
+
+function setCloudFolderName(name) {
+  cloudFolderName = name;
+  if (name) {
+    localStorage.setItem(STORAGE_KEY + ':folderName', name);
+  } else {
+    localStorage.removeItem(STORAGE_KEY + ':folderName');
+  }
+  renderFolderStatus();
+}
 let cloudSaveTimer = null;
 let cloudLastSavedAt = null;
 let cloudBootstrapped = false; // true once we've confirmed a real cloud load
@@ -2269,7 +2279,7 @@ function gdrivePickFolder() {
           </code>
         </div>
         <div style="margin-bottom:8px;font-size:0.85rem;font-weight:500;">Folder ID:</div>
-        <input id="gdrive-folder-id-input" type="text" placeholder="Paste folder ID here"
+        <input id="gdrive-folder-id-input" type="text" placeholder="Paste the full Drive URL or just the folder ID"
           style="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;font-family:ui-monospace,monospace;margin-bottom:16px;" />
         <div style="margin-bottom:8px;font-size:0.85rem;font-weight:500;">Folder name (for display):</div>
         <input id="gdrive-folder-name-input" type="text" placeholder="e.g. GTD Task Management"
@@ -2283,7 +2293,10 @@ function gdrivePickFolder() {
     const cleanup = () => document.body.removeChild(overlay);
     overlay.querySelector('#gdrive-folder-cancel').onclick = () => { cleanup(); reject(new Error('AbortError')); };
     overlay.querySelector('#gdrive-folder-connect').onclick = () => {
-      const id   = overlay.querySelector('#gdrive-folder-id-input').value.trim();
+      const raw  = overlay.querySelector('#gdrive-folder-id-input').value.trim();
+      // Accept full Drive URL or bare ID — extract the ID either way
+      const match = raw.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+      const id   = match ? match[1] : raw;
       const name = overlay.querySelector('#gdrive-folder-name-input').value.trim() || id;
       if (!id) { overlay.querySelector('#gdrive-folder-id-input').style.borderColor = '#dc2626'; return; }
       cleanup();
