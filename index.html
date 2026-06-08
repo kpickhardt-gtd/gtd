@@ -2401,7 +2401,9 @@ async function runDriveBackups(stateJson) {
 // Save current data to Drive
 async function saveToDrive(force = false) {
   if (cloudDataProtected) { setCloudStatus('error', 'saves blocked — reload first'); return false; }
-  if (!force && looksLikeDefaultData(data)) {
+  // Only block on default-looking data during initial boot (before Drive has been loaded).
+  // Once bootstrapped, trust the in-memory data regardless of IDs.
+  if (!force && !cloudBootstrapped && looksLikeDefaultData(data)) {
     setDataProtected('Save blocked: data looks like defaults. Reload to restore.');
     return false;
   }
@@ -2505,6 +2507,7 @@ async function connectGoogleDrive() {
     // Quick reconnect: file ID already known — just reauth and sync without folder picker
     if (gdriveFileId) {
       driveSyncActive = true;
+      cloudBootstrapped = true;
       clearDataProtected();
       // Check if local cache is newer than Drive (unsaved changes while token was expired)
       let localSavedAt = '';
@@ -2548,6 +2551,7 @@ async function connectGoogleDrive() {
       }
       if (parsed?.data) {
         _activateDrive(existing.id, folder.id, folder.name);
+        cloudBootstrapped = true;
         data = { ...clone(DEFAULT_DATA), ...parsed.data };
         _persistAndRender(parsed.savedAt);
         setCloudStatus('synced', 'task list loaded');
@@ -2566,6 +2570,7 @@ async function connectGoogleDrive() {
       JSON.stringify({ version: 1, savedAt: new Date().toISOString(), data }, null, 2)
     );
     _activateDrive(newId, folder.id, folder.name);
+    cloudBootstrapped = true;
     _persistAndRender(new Date().toISOString());
     setCloudStatus('synced', 'task list created');
     startCloudPolling();
@@ -2590,6 +2595,7 @@ async function initDriveOnLoad() {
     if (loaded?.data) {
       data = { ...clone(DEFAULT_DATA), ...loaded.data };
       driveSyncActive = true;
+      cloudBootstrapped = true;
       clearDataProtected();
       _persistAndRender(loaded.savedAt);
       setCloudStatus('synced');
