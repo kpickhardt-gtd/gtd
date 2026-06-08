@@ -1570,26 +1570,46 @@ const DEFAULT_DATA = {
 //               <ol>, <strong>, <em>, <code>, and .help-callout / .help-tag divs
 //   • `updated` — date string shown at the bottom of the section
 // ─────────────────────────────────────────────────────────────────────────────
-const HELP_DOCS = [
+// Help docs are loaded from help.json at runtime.
+// HELP_DOCS_FALLBACK below is used if the fetch fails (e.g. offline).
+let HELP_DOCS = [];
+function _loadHelpDocs() {
+  return fetch('./help.json')
+    .then(r => r.json())
+    .then(docs => {
+      HELP_DOCS = docs;
+      if (helpActiveSection === 'overview' && docs.length) helpActiveSection = docs[0].id;
+      const modal = document.getElementById('help-modal');
+      if (modal && modal.style.display !== 'none') renderHelpNav();
+    })
+    .catch(e => {
+      console.warn('Could not load help.json — using built-in fallback:', e);
+      HELP_DOCS = HELP_DOCS_FALLBACK;
+    });
+}
+_loadHelpDocs();
+
+const HELP_DOCS_FALLBACK = [
   {
     id: 'overview',
     title: 'System Overview',
-    updated: 'May 2026',
+    updated: 'June 2026',
     body: `
 <h2>System Overview</h2>
 <p class="help-subtitle">What this is, how it works, and where your data lives.</p>
-<p>This is a purpose-built, browser-based productivity system grounded in David Allen's <strong>Getting Things Done (GTD)</strong> methodology. It runs entirely as a single HTML file — no server, no login, no subscription — and stores all data in a cloud-synced JSON file that lives in a folder you own on your computer.</p>
+<p>This is a purpose-built, browser-based productivity system grounded in David Allen's <strong>Getting Things Done (GTD)</strong> methodology. It runs entirely as a single HTML file hosted on GitHub Pages — no server, no login, no subscription — and stores all data in a Google Drive JSON file that you own.</p>
 <h3>Two files, that's it</h3>
 <ul>
-  <li><strong>index.html</strong> — the full application (UI, logic, and layout). Open this file in any modern browser and the app runs immediately.</li>
-  <li><strong>gtd-cloud-state.json</strong> — your data. All tasks, projects, notes, and log entries live here. The app reads from and writes to this file automatically.</li>
+  <li><strong>index.html</strong> — the full application (UI, logic, and layout), hosted at <a href="https://kpickhardt-gtd.github.io/gtd/" target="_blank" style="color:var(--accent)">kpickhardt-gtd.github.io/gtd/</a>.</li>
+  <li><strong>gtd-cloud-state.json</strong> — your data. All tasks, projects, notes, and log entries live here, stored in a Google Drive folder you own.</li>
 </ul>
-<div class="help-callout"><strong>Key principle:</strong> Your data is yours. No account required, no third-party servers, no sync fees. Everything lives in your OneDrive folder and is readable as plain text.</div>
+<div class="help-callout"><strong>Key principle:</strong> Your data is yours. No account required beyond Google, no third-party servers, no sync fees. Everything lives in a Drive folder you control and is readable as plain text.</div>
 <h3>Cloud sync</h3>
-<p>The app uses the browser's <strong>File System Access API</strong> to read and write directly to a folder on your computer. Click <strong>Connect cloud folder</strong> (top-right) and select your GTD Task Management folder. The app will ask for read/write permission once per browser session. After that, changes sync automatically through OneDrive to other devices.</p>
-<div class="help-callout"><strong>Known issue:</strong> Occasionally the app's auto-save can truncate the cloud state file mid-write. Claude can detect and repair this automatically — just ask. If data appears missing after a reload, check the cloud sync status indicator in the header.</div>
+<p>The app connects to <strong>Google Drive</strong> via the Drive REST API. Click <strong>🔗 Connect via Google Drive</strong> (top-right), sign in with Google, and paste your Drive folder ID when prompted. Changes save automatically within seconds. The app polls Drive every 30 seconds so multiple devices stay in sync.</p>
+<h3>Reconnecting</h3>
+<p>Google access tokens live in memory and expire when you close the browser. On your next visit, click <strong>🔗 Connect</strong> — it signs you back in with one click (no folder re-entry needed) and pushes any changes made while offline to Drive. Your data is always preserved locally between sessions.</p>
 <h3>Recommended browser</h3>
-<p>Chrome or Edge on desktop. The File System Access API is not supported in Firefox or Safari.</p>
+<p>Any modern browser — Chrome, Edge, Firefox, Safari. Works on desktop and mobile.</p>
     `
   },
   {
@@ -1763,19 +1783,58 @@ const HELP_DOCS = [
   {
     id: 'getting-started',
     title: 'Getting Started',
-    updated: 'May 2026',
+    updated: 'June 2026',
     body: `
 <h2>Getting Started</h2>
-<p class="help-subtitle">Six steps to get your system live and trusted.</p>
+<p class="help-subtitle">Five steps to get your system live and trusted.</p>
 <ol>
-  <li><strong>Open the app.</strong> Open index.html in Chrome or Edge. The app loads immediately.</li>
-  <li><strong>Connect your data.</strong> Click <em>Connect cloud folder</em> (top-right) and select your GTD Task Management folder. Your data loads from gtd-cloud-state.json.</li>
+  <li><strong>Open the app.</strong> Go to <a href="https://kpickhardt-gtd.github.io/gtd/" target="_blank" style="color:var(--accent)">kpickhardt-gtd.github.io/gtd/</a> in any browser. The app loads immediately.</li>
+  <li><strong>Connect to Google Drive.</strong> Click <em>🔗 Connect via Google Drive</em> (top-right). Sign in with your Google account, then paste your Drive folder URL or ID. See the <strong>Google Drive Setup</strong> section for detailed steps.</li>
   <li><strong>Clear your Inbox.</strong> Go to the Inbox tab and process every item: move actionable ones to Next Actions or Projects, delete the rest.</li>
   <li><strong>Pick your focus.</strong> Go to Next Actions and set Focus Dates on the 3–5 things you want to work on today.</li>
   <li><strong>Clear stalled projects.</strong> Check the Dashboard. Any high-priority stalled projects need a next action now — add one or move the project to Blocked.</li>
-  <li><strong>Set your review cadence.</strong> Put a Weekly Review on your calendar — Friday afternoons work well. 45 minutes using the Review tab checklist.</li>
 </ol>
 <div class="help-callout"><strong>Tip:</strong> Don't try to load the system perfectly on day one. Capture everything in the Inbox, run a quick review, and build the habit of daily capture + weekly review. The system gets more powerful as your data reflects your real commitments.</div>
+    `
+  },
+  {
+    id: 'drive-setup',
+    title: 'Google Drive Setup',
+    updated: 'June 2026',
+    body: `
+<h2>Google Drive Setup</h2>
+<p class="help-subtitle">How to connect, reconnect, and use Google Drive Desktop for AI co-editing.</p>
+
+<h3>First-time connection</h3>
+<ol>
+  <li>Click <strong>🔗 Connect via Google Drive</strong> in the top-right header.</li>
+  <li>Sign in with your Google account when prompted.</li>
+  <li>Open <a href="https://drive.google.com" target="_blank" style="color:var(--accent)">Google Drive</a> in another tab, navigate to the folder where you want your task list to live, and copy the URL from the address bar. It will look like: <code>https://drive.google.com/drive/folders/1GaCEJnWmla1gkj3...</code></li>
+  <li>Paste the full URL (or just the folder ID after <code>/folders/</code>) into the dialog and click <strong>Connect</strong>.</li>
+  <li>The app will verify the folder and either load your existing <code>gtd-cloud-state.json</code> file or offer to create a new one.</li>
+</ol>
+<div class="help-callout"><strong>One folder = one task list.</strong> Each browser window can connect to a different Drive folder, making it possible to maintain separate lists (e.g. work vs. personal) in the same app.</div>
+
+<h3>Reconnecting after closing the browser</h3>
+<p>Google access tokens are in-memory only — they don't survive a browser close. The next time you open the app:</p>
+<ol>
+  <li>Your data loads from the local cache automatically. You'll see a status message: <em>"Drive session expired — click Connect to reconnect."</em></li>
+  <li>Click <strong>🔗 Connect</strong>. Google's sign-in popup appears briefly and auto-closes.</li>
+  <li>The app reconnects instantly — no folder re-entry required. If you made any changes while offline, they are pushed to Drive automatically.</li>
+</ol>
+
+<h3>Setting up Google Drive Desktop for AI co-editing</h3>
+<p>If you use an AI assistant (such as Claude in Cowork mode) to help manage your task list, you can give it direct read/write access to your <code>gtd-cloud-state.json</code> file by mapping Google Drive as a local folder.</p>
+<ol>
+  <li><strong>Install Google Drive for Desktop</strong> from <a href="https://drive.google.com/drive/downloads" target="_blank" style="color:var(--accent)">drive.google.com/drive/downloads</a>. Sign in with the same Google account you use for the app.</li>
+  <li>Google Drive will appear as a local drive on your computer (e.g. <code>G:\\My Drive\\</code> on Windows). Your task list file will be at the path shown in your Drive Desktop settings.</li>
+  <li><strong>In Claude Cowork:</strong> connect the Google Drive folder by granting folder access in the session. Claude can then read and write <code>gtd-cloud-state.json</code> directly.</li>
+  <li>Changes Claude makes to the file are picked up by Google Drive for Desktop within seconds and synced to the cloud. The app loads them on its next poll.</li>
+</ol>
+<div class="help-callout"><strong>Conflict avoidance tip:</strong> Don't ask Claude to edit the file at the same moment you're actively using the app. Let one finish before triggering the other. If Google Drive creates a conflict file (e.g. <code>gtd-cloud-state (1).json</code>), simply delete the duplicate — your data is in the original.</div>
+
+<h3>Using multiple devices</h3>
+<p>Every browser on every device connects to the same Drive folder. Simply open the app URL, click Connect, and your full task list loads from Drive. No installation required beyond a browser.</p>
     `
   },
   {
@@ -1820,13 +1879,19 @@ const HELP_DOCS = [
     `
   },
 ];
+// ── END FALLBACK ──
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELP MODAL FUNCTIONS
 // ─────────────────────────────────────────────────────────────────────────────
-let helpActiveSection = HELP_DOCS[0].id;
+let helpActiveSection = 'overview';
 
 function openHelp(sectionId) {
+  if (!HELP_DOCS.length) {
+    // Docs still loading — wait and retry
+    _loadHelpDocs().then(() => openHelp(sectionId));
+    return;
+  }
   helpActiveSection = sectionId || helpActiveSection || HELP_DOCS[0].id;
   renderHelpNav();
   renderHelpContent();
