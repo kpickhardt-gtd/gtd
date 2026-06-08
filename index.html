@@ -2254,7 +2254,12 @@ async function initGdriveTokenClient() {
 async function gdriveGetToken(interactive = true) {
   await initGdriveTokenClient();
   return new Promise((resolve, reject) => {
+    // Silent auth can hang if the browser blocks the hidden popup — add a timeout
+    const timer = interactive ? null : setTimeout(() => {
+      reject(new Error('silent-auth-timeout'));
+    }, 6000);
     gdriveTokenClient.callback = resp => {
+      if (timer) clearTimeout(timer);
       if (resp.error) { reject(new Error(resp.error_description || resp.error)); return; }
       gdriveToken = resp.access_token;
       resolve(resp.access_token);
@@ -2552,12 +2557,17 @@ async function initDriveOnLoad() {
     const loaded = await loadFromDrive();
     if (loaded?.data) {
       data = { ...clone(DEFAULT_DATA), ...loaded.data };
+      driveSyncActive = true;
+      clearDataProtected();
       _persistAndRender(loaded.savedAt);
+      setCloudStatus('synced');
       startCloudPolling();
       return true;
     }
   } catch(e) {
     console.warn('Drive auto-reconnect failed:', e.message);
+    // Keep driveSyncActive true so the Reconnect button is visible
+    driveSyncActive = !!gdriveFileId;
     setCloudStatus('error', 'Drive session expired — click Reconnect');
   }
   return false;
@@ -2755,6 +2765,22 @@ async function manualCloudReload() {
 async function initCloudSync() {
   // Try Drive first (primary backend)
   if (await initDriveOnLoad()) return;
+
+  // Drive was previously configured but auto-reconnect failed (e.g. token expired).
+  // Load last-cached data from localStorage and prompt user to click Reconnect.
+  // Do NOT fall through to FSA — that would wipe their Drive-synced task list.
+  if (gdriveFileId) {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        data = { ...clone(DEFAULT_DATA), ...parsed };
+        render();
+      }
+    } catch(e) {}
+    setCloudStatus('error', 'Drive session expired — click 🔗 Connect to reconnect');
+    return;
+  }
 
   // Fall back to File System Access API (legacy / local)
   if (!fsaSupported()) { setCloudStatus('unsupported'); return; }
