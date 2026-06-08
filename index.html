@@ -2190,7 +2190,7 @@ async function loadFromCloud() {
 
 const GDRIVE_CLIENT_ID    = '458511592048-8snrhlrkhttb8omoriuonsvpvo3qspt1.apps.googleusercontent.com';
 const GDRIVE_API_KEY      = 'AIzaSyCZ6IIRmWUCO-3BGq-TMUMrKJJICnophQU';
-const GDRIVE_SCOPE        = 'https://www.googleapis.com/auth/drive.file';
+const GDRIVE_SCOPE        = 'https://www.googleapis.com/auth/drive';
 const GDRIVE_FILE_ID_KEY  = STORAGE_KEY + ':gdriveFileId';
 const GDRIVE_FOLDER_ID_KEY= STORAGE_KEY + ':gdriveFolderId';
 
@@ -2465,6 +2465,14 @@ async function connectGoogleDrive() {
     const folder = await gdrivePickFolder();
 
     setCloudStatus('connecting', 'checking for task list…');
+    // Verify the folder is accessible with the current token before proceeding
+    const folderCheck = await gdriveFetch(`https://www.googleapis.com/drive/v3/files/${folder.id}?fields=id,name`);
+    if (!folderCheck.ok) {
+      const errJson = await folderCheck.json().catch(() => ({}));
+      throw new Error(`Folder not accessible (${folderCheck.status}) — make sure you signed in with the Google account that owns this folder. ${errJson.error?.message || ''}`);
+    }
+    const folderMeta = await folderCheck.json();
+    folder.name = folder.name || folderMeta.name || folder.id;
     const existing = await gdriveFindFile(folder.id, CLOUD_STATE_FILENAME);
 
     if (existing) {
