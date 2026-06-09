@@ -2262,10 +2262,14 @@ function syncBucketViews() {
   });
 
   data.inbox    = data.items.filter(it => it.kind === 'inbox');
-  data.next     = data.items.filter(it => it.kind === 'action');
+  // Next Actions view shows only items with status 'next' (or 'done' so the
+  // "Show completed" filter in renderNext has something to surface). Waiting,
+  // Someday, and any other status get their own buckets.
+  data.next     = data.items.filter(it => it.kind === 'action' && (it.status === 'next' || it.status === 'done'));
   data.projects = data.items.filter(it => it.kind === 'project');
-  data.waiting  = data.items.filter(it => it.kind === 'action' && (it.status === 'waiting' || (it.who && it.since)));
-  data.calendar = data.items.filter(it => it.kind === 'action' && (it.dueDate || it.scheduledAt || it.date));
+  data.waiting  = data.items.filter(it => it.kind === 'action' && it.status === 'waiting');
+  // Calendar view: actions with a date that aren't done or parked
+  data.calendar = data.items.filter(it => it.kind === 'action' && it.status !== 'done' && it.status !== 'someday' && (it.dueDate || it.scheduledAt || it.date));
   data.someday  = data.items.filter(it => it.kind === 'action' && it.status === 'someday');
 }
 
@@ -4570,22 +4574,12 @@ function renderProjectCard(p) {
   const completedAge = p.status === 'completed' && p.completedDate ? formatAge(p.completedDate) : '';
   const ageStr = p.created ? formatAge(p.created) : '';
   return `
-    <div class="project-card ${p.status === 'completed' ? 'completed' : ''}">
+    <div class="project-card ${p.status === 'completed' || p.status === 'done' ? 'completed' : ''}">
       <div class="title">
         <div><span class="chip id" style="margin-right:8px;vertical-align:middle;">#${escapeHtml(p.id)}</span>${escapeHtml(p.title)}${ageStr ? `<span class="age-tag">(${ageStr})</span>` : ''}</div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
-          <select class="priority-select ${p.priority || 'med'}" onchange="setProjectPriority('${p.id}',this.value)" title="Change priority">
-            <option value="high" ${(p.priority||'med')==='high'?'selected':''}>↑ high</option>
-            <option value="med"  ${(p.priority||'med')==='med' ?'selected':''}>· med</option>
-            <option value="low"  ${(p.priority||'med')==='low' ?'selected':''}>↓ low</option>
-          </select>
-          ${renderStatusDropdown(p)}
           <span class="chip status-${p.status}">${p.status}${completedAge ? ' ' + completedAge + ' ago' : ''}</span>
           ${area ? `<span class="chip area">${escapeHtml(area.title.split(' ').slice(0,2).join(' '))}</span>` : ''}
-          ${p.status !== 'completed' ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('projects','${p.id}')">📝 Add note</button>` : ''}
-          ${p.status !== 'completed' ? `<button class="icon-btn" title="Mark project complete" onclick="completeProject('${p.id}')">✓ Complete</button>` : `<button class="icon-btn" title="Reopen project" onclick="completeProject('${p.id}')">↺ Reopen</button>`}
-          <button class="icon-btn" title="Edit project" onclick="startEdit('projects','${p.id}')">✏️ Edit</button>
-          <button class="btn danger" onclick="deleteItem('projects','${p.id}')">${isDeleting('projects', p.id) ? '⚠️ Click again' : 'Delete'}</button>
         </div>
       </div>
       ${p.outcome ? `<div class="outcome">${escapeHtml(p.outcome)}</div>` : ''}
@@ -4616,6 +4610,17 @@ function renderProjectCard(p) {
             <button class="btn secondary" onclick="cancelAddActionToProject()">Cancel</button>
           </div>
         ` : ''}
+      </div>
+      <div class="item-actions">
+        ${renderStatusDropdown(p)}
+        <select class="priority-select ${p.priority || 'med'}" onchange="setProjectPriority('${p.id}',this.value)" title="Change priority">
+          <option value="high" ${(p.priority||'med')==='high'?'selected':''}>↑ high</option>
+          <option value="med"  ${(p.priority||'med')==='med' ?'selected':''}>· med</option>
+          <option value="low"  ${(p.priority||'med')==='low' ?'selected':''}>↓ low</option>
+        </select>
+        ${p.status !== 'completed' && p.status !== 'done' ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('projects','${p.id}')">📝 Add note</button>` : ''}
+        <button class="icon-btn" title="Edit project" onclick="startEdit('projects','${p.id}')">✏️ Edit</button>
+        <button class="btn danger" onclick="deleteItem('projects','${p.id}')">${isDeleting('projects', p.id) ? '⚠️ Click again' : 'Delete'}</button>
       </div>
     </div>
   `;
