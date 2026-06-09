@@ -1142,16 +1142,17 @@
 <nav id="nav">
   <div class="nav-section-label">Capture</div>
   <button data-tab="dashboard" class="active">Dashboard</button>
+  <button data-tab="focus"><span>Focus</span> <span class="count" id="count-focus">0</span></button>
   <button data-tab="inbox"><span>Inbox</span> <span class="count" id="count-inbox">0</span></button>
   <div class="nav-section-label">Lists</div>
-  <button data-tab="next"><span>Next Actions</span> <span class="count" id="count-next">0</span></button>
   <button data-tab="projects"><span>Projects</span> <span class="count" id="count-projects">0</span></button>
+  <button data-tab="next"><span>Next Actions</span> <span class="count" id="count-next">0</span></button>
   <button data-tab="waiting"><span>Waiting For</span> <span class="count" id="count-waiting">0</span></button>
   <button data-tab="calendar"><span>Calendar</span> <span class="count" id="count-calendar">0</span></button>
   <button data-tab="someday"><span>Someday/Maybe</span> <span class="count" id="count-someday">0</span></button>
   <button data-tab="done"><span>Done</span> <span class="count" id="count-done">0</span></button>
-  <button data-tab="areas">Areas of Focus</button>
   <button data-tab="horizons">Goals &amp; Horizons</button>
+  <button data-tab="areas">Areas of Focus</button>
   <div class="nav-section-label">Reflect</div>
   <button data-tab="sessionlog"><span>Session Log</span> <span class="count" id="count-sessionlog">0</span></button>
   <button data-tab="review">Review</button>
@@ -1213,6 +1214,19 @@
         <pre id="diagnostics-output" style="margin-top:10px;padding:10px;background:#0f172a;color:#e2e8f0;border-radius:6px;font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.4;max-height:400px;overflow:auto;white-space:pre-wrap;word-break:break-word;display:none;"></pre>
       </div>
     </div>
+  </section>
+
+  <!-- ========== FOCUS ========== -->
+  <section class="section" id="section-focus">
+    <div class="section-header">
+      <div>
+        <h2>Focus</h2>
+        <div class="blurb">Actions you've chosen to work on — grouped by focus date. Set a focus date on a Next Action to plan your day or week. Calendar items (with due dates) appear on the Calendar tab instead.</div>
+      </div>
+    </div>
+
+    <input id="search-focus" type="text" placeholder="Search focused items…" oninput="renderFocus()" style="margin-bottom:12px;width:100%;padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;" />
+    <div id="list-focus"></div>
   </section>
 
   <!-- ========== INBOX ========== -->
@@ -3548,6 +3562,7 @@ function render() {
   renderCalendar();
   renderSomeday();
   renderDone();
+  renderFocus();
   renderAreas();
   renderHorizons();
   renderSessionLog();
@@ -3573,6 +3588,8 @@ function renderCounts() {
   document.getElementById('count-someday').textContent = data.someday.length;
   const doneEl = document.getElementById('count-done');
   if (doneEl) doneEl.textContent = (data.items || []).filter(it => it.status === 'done' || it.status === 'completed').length;
+  const focusEl = document.getElementById('count-focus');
+  if (focusEl) focusEl.textContent = (data.items || []).filter(it => it.kind === 'action' && it.status !== 'done' && it.status !== 'someday' && it.focusDate).length;
   const slEl = document.getElementById('count-sessionlog');
   if (slEl) slEl.textContent = (data.sessionlog || []).length;
 }
@@ -5045,6 +5062,117 @@ function renderDone() {
       </div>
     `;
   }).join('');
+}
+
+// =================================================================
+// FOCUS
+// =================================================================
+function renderFocus() {
+  const list = document.getElementById('list-focus');
+  if (!list) return;
+
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const tomorrow = new Date(today.getTime() + 86400000);
+  const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+  const weekEnd = new Date(today.getTime() + 7 * 86400000);
+  const weekEndStr = weekEnd.toISOString().slice(0, 10);
+
+  let items = (data.items || []).filter(it =>
+    it.kind === 'action' &&
+    it.status !== 'done' &&
+    it.status !== 'someday' &&
+    it.focusDate
+  );
+
+  const q = (document.getElementById('search-focus')?.value || '').toLowerCase().trim();
+  if (q) items = items.filter(it =>
+    (it.text || '').toLowerCase().includes(q) ||
+    (it.id || '').toLowerCase().includes(q) ||
+    (it.notes || '').toLowerCase().includes(q)
+  );
+
+  if (items.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">🎯</div>No items with a focus date${q ? ' matching "' + q + '"' : ''}.<br><span style="font-size:12px;color:var(--muted);">Set a focus date on any Next Action to plan your day or week.</span></div>`;
+    return;
+  }
+
+  // Group: overdue (focusDate before today), today, tomorrow, this week, later
+  const groups = { overdue: [], today: [], tomorrow: [], thisWeek: [], later: [] };
+  items.forEach(it => {
+    const d = it.focusDate;
+    if (d < todayStr) groups.overdue.push(it);
+    else if (d === todayStr) groups.today.push(it);
+    else if (d === tomorrowStr) groups.tomorrow.push(it);
+    else if (d <= weekEndStr) groups.thisWeek.push(it);
+    else groups.later.push(it);
+  });
+
+  // Sort within each group by focusDate ascending then priority
+  const prio = { high: 0, med: 1, low: 2 };
+  Object.keys(groups).forEach(g => {
+    groups[g].sort((a, b) => {
+      if (a.focusDate !== b.focusDate) return (a.focusDate || '').localeCompare(b.focusDate || '');
+      return prio[a.priority || 'med'] - prio[b.priority || 'med'];
+    });
+  });
+
+  const labels = {
+    overdue: '⚠ Overdue focus',
+    today: 'Today',
+    tomorrow: 'Tomorrow',
+    thisWeek: 'This week',
+    later: 'Later'
+  };
+
+  let html = '';
+  ['overdue', 'today', 'tomorrow', 'thisWeek', 'later'].forEach(group => {
+    if (groups[group].length === 0) return;
+    html += `<div class="group-label">${labels[group]} (${groups[group].length})</div>`;
+    html += groups[group].map(it => {
+      const project = it.projectId ? data.items.find(x => x.id === it.projectId && x.kind === 'project') : null;
+      const dueChip = it.dueDate
+        ? `<span class="chip ${daysFromToday(it.dueDate) < 0 ? 'due-overdue' : daysFromToday(it.dueDate) <= 3 ? 'due-soon' : 'due-later'}">due ${it.dueDate}</span>`
+        : '';
+      const focusChip = `<span class="chip focus-today">focus ${it.focusDate}</span>`;
+      const priorityChip = it.priority === 'high' ? `<span class="chip priority-high">↑ high</span>` :
+                          it.priority === 'low' ? `<span class="chip priority-low">↓ low</span>` : '';
+      const contextChip = (it.context || (it.tags && it.tags[0])) ? `<span class="chip context">${escapeHtml(it.context || it.tags[0])}</span>` : '';
+      return `
+        <div class="item">
+          <div class="item-header" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <span class="chip id">#${escapeHtml(it.id)}</span>
+            ${focusChip}
+            ${priorityChip}
+            ${contextChip}
+            ${dueChip}
+            ${project ? `<span class="chip project" onclick="focusItem('${project.id}')" style="cursor:pointer;">${escapeHtml(project.text.slice(0, 40))}</span>` : ''}
+          </div>
+          <div class="item-body">
+            <div>${escapeHtml(it.text || '')}</div>
+            ${it.notes ? `<div class="item-notes">${linkifyNotes(it.notes)}</div>` : ''}
+          </div>
+          <div class="item-actions">
+            ${renderStatusDropdown(it)}
+            <button class="icon-btn" title="Clear focus date" onclick="clearFocusDate('${it.id}')">🗑 Clear focus</button>
+            <button class="icon-btn" title="Edit" onclick="startEdit('next','${it.id}')">✏️ Edit</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  });
+
+  list.innerHTML = html;
+}
+
+function clearFocusDate(id) {
+  const item = data.items.find(it => it.id === id);
+  if (!item) return;
+  item.focusDate = null;
+  syncBucketViews();
+  save();
+  render();
+  showToast('Focus date cleared');
 }
 
 // =================================================================
