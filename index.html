@@ -5606,6 +5606,7 @@ function updateMobileBadges() {
 }
 
 // Hook into render so mobile badges stay current
+const _renderOrig = render;
 render = function(...args) {
   _renderOrig(...args);
   updateMobileBadges();
