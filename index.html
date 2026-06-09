@@ -1113,8 +1113,9 @@
   <div>
     <h1>Kevin's GTD System</h1>
     <div class="meta" id="dateLine"></div>
-    <div style="margin-top:4px;">
+    <div style="margin-top:4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       <span id="cloud-sync-status" class="cloud-sync-indicator status-init">⋯ Initializing</span>
+      <button id="reconnect-drive-btn" onclick="connectGoogleDrive()" title="Reconnect to Google Drive" style="font-size:11px;padding:3px 10px;border:1px solid var(--border-strong);background:var(--surface);border-radius:5px;cursor:pointer;color:var(--text);">🔗 Reconnect Drive</button>
     </div>
   </div>
   <div class="quick-capture">
@@ -5043,7 +5044,7 @@ function renderDone() {
     const completedAge = (it.completed || it.completedDate) ? formatAge(it.completed || it.completedDate) : '';
     const kindLabel = it.kind === 'project' ? 'Project' : 'Action';
     return `
-      <div class="item done">
+      <div class="item">
         <div class="item-body">
           <div class="item-text">${escapeHtml(it.text || '')}${completedAge ? `<span class="age-tag">(completed ${completedAge} ago)</span>` : ''}</div>
           <div class="item-meta">
