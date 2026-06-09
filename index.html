@@ -427,6 +427,18 @@
   select.priority-select.high { background: #fee2e2; color: #991b1b; }
   select.priority-select.med  { background: var(--warning-soft); color: #92400e; }
   select.priority-select.low  { background: #f3f4f6; color: #6b7280; }
+  .status-dropdown {
+    font-size: 12px;
+    padding: 4px 8px;
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 6px;
+    background: var(--surface, #fff);
+    color: var(--text);
+    cursor: pointer;
+    font-family: inherit;
+    min-width: 110px;
+  }
+  .status-dropdown:hover { border-color: var(--accent, #6366f1); }
   .chip.area { background: #dcfce7; color: #166534; }
   .chip.date { background: var(--info-soft); color: var(--info); }
   .chip.status-active { background: #dcfce7; color: #166534; }
@@ -2325,6 +2337,71 @@ function removeItemById(id) {
   syncBucketViews();
 }
 
+// -----------------------------------------------------------------
+// Unified status change (replaces per-bucket transition buttons).
+// -----------------------------------------------------------------
+const VALID_STATUSES = {
+  action: ['next', 'waiting', 'someday', 'done'],
+  project: ['active', 'blocked', 'someday', 'done']
+};
+
+const STATUS_LABELS = {
+  next: 'Next Action',
+  waiting: 'Waiting For',
+  someday: 'Someday/Maybe',
+  done: 'Done',
+  active: 'Active',
+  blocked: 'Blocked'
+};
+
+const STATUS_BUCKET = {
+  next: 'next',
+  waiting: 'waiting',
+  someday: 'someday',
+  done: 'next',     // stays in actions list (with "show done" filter), or shows in dedicated Done view later
+  active: 'projects',
+  blocked: 'projects'
+};
+
+function changeItemStatus(id, newStatus, opts) {
+  const item = data.items.find(it => it.id === id);
+  if (!item) return false;
+  const validList = VALID_STATUSES[item.kind] || [];
+  if (!validList.includes(newStatus)) {
+    console.warn('changeItemStatus: invalid status', newStatus, 'for kind', item.kind);
+    return false;
+  }
+  const oldStatus = item.status;
+  if (oldStatus === newStatus) return false;
+  item.status = newStatus;
+  // Track in history
+  if (!Array.isArray(item.history)) item.history = [];
+  item.history.push({
+    ts: new Date().toISOString(),
+    note: 'Status changed: ' + oldStatus + ' → ' + newStatus
+  });
+  // Completion tracking
+  if (newStatus === 'done' && !item.completed) item.completed = new Date().toISOString();
+  if (newStatus !== 'done') item.completed = null;
+  syncBucketViews();
+  save();
+  render();
+  if (!(opts && opts.silent)) {
+    const fromLabel = STATUS_LABELS[oldStatus] || oldStatus || '—';
+    const toLabel = STATUS_LABELS[newStatus] || newStatus;
+    showToast('Moved from ' + fromLabel + ' to ' + toLabel);
+  }
+  return true;
+}
+
+function renderStatusDropdown(item) {
+  if (item.kind === 'inbox') return ''; // inbox items don't have status
+  const options = VALID_STATUSES[item.kind] || [];
+  const current = item.status || options[0];
+  const opts = options.map(s => `<option value="${s}"${s === current ? ' selected' : ''}>${STATUS_LABELS[s]}</option>`).join('');
+  return `<select class="status-dropdown" data-id="${item.id}" onchange="changeItemStatus('${item.id}', this.value)" title="Status">${opts}</select>`;
+}
+
 function _buildV2Payload() {
   const items = (data.items || []).map(it => {
     const c = { ...it };
@@ -3363,6 +3440,22 @@ function linkify(text) {
     url => `<a href="${url}" target="_blank" rel="noopener">${url}</a>`);
 }
 
+// Lightweight transient toast notification (for status changes etc.).
+let _toastTimer = null;
+function showToast(msg, opts) {
+  let el = document.getElementById('gtd-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'gtd-toast';
+    el.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text,#1f2937);color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.18);z-index:9999;opacity:0;transition:opacity .2s ease;pointer-events:none;max-width:480px;text-align:center;';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.opacity = '1';
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.style.opacity = '0'; }, (opts && opts.duration) || 2200);
+}
+
 // =================================================================
 // NAVIGATION
 // =================================================================
@@ -4194,11 +4287,10 @@ function renderNext() {
           ` : ''}
         </div>
         <div class="item-actions">
+          ${renderStatusDropdown(n)}
           ${!n.done && !isStarted ? `<button class="icon-btn" title="Mark started" onclick="startNext('${n.id}')">▶ Start</button>` : ''}
           ${!n.done && isStarted ? `<button class="icon-btn" title="Mark not started (clear flag)" onclick="startNext('${n.id}')">↺ Unstart</button>` : ''}
           ${!n.done ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('next','${n.id}')">📝 Add note</button>` : ''}
-          ${!n.done ? `<button class="icon-btn" title="Move to Waiting For" onclick="nextToWaiting('${n.id}')">→ Waiting</button>` : ''}
-          ${!n.done ? `<button class="icon-btn" title="Move to Someday/Maybe" onclick="nextToSomeday('${n.id}')">→ Someday</button>` : ''}
           <button class="icon-btn" title="Edit" onclick="startEdit('next','${n.id}')">✏️ Edit</button>
           <button class="btn danger" onclick="deleteItem('next','${n.id}')">${isDeleting('next', n.id) ? '⚠️ Click again' : 'Delete'}</button>
         </div>
@@ -4487,6 +4579,7 @@ function renderProjectCard(p) {
             <option value="med"  ${(p.priority||'med')==='med' ?'selected':''}>· med</option>
             <option value="low"  ${(p.priority||'med')==='low' ?'selected':''}>↓ low</option>
           </select>
+          ${renderStatusDropdown(p)}
           <span class="chip status-${p.status}">${p.status}${completedAge ? ' ' + completedAge + ' ago' : ''}</span>
           ${area ? `<span class="chip area">${escapeHtml(area.title.split(' ').slice(0,2).join(' '))}</span>` : ''}
           ${p.status !== 'completed' ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('projects','${p.id}')">📝 Add note</button>` : ''}
@@ -4654,8 +4747,8 @@ function renderWaiting() {
           ` : ''}
         </div>
         <div class="item-actions">
+          ${renderStatusDropdown(w)}
           ${!w.resolved ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('waiting','${w.id}')">📝 Add note</button>` : ''}
-          ${!w.resolved ? `<button class="icon-btn" title="Convert to Next Action (ball came back to you)" onclick="waitingToNext('${w.id}')">→ Next Action</button>` : ''}
           <button class="icon-btn" title="Edit" onclick="startEdit('waiting','${w.id}')">✏️ Edit</button>
           ${!w.resolved ? `<button class="btn danger" onclick="resolveItem('waiting','${w.id}')">${isResolving('waiting', w.id) ? '⚠️ Click again' : 'Resolved'}</button>` : `<button class="btn danger" onclick="deleteItem('waiting','${w.id}')">${isDeleting('waiting', w.id) ? '⚠️ Click again' : 'Delete'}</button>`}
         </div>
@@ -4736,6 +4829,7 @@ function renderCalendar() {
           ` : ''}
         </div>
         <div class="item-actions">
+          ${renderStatusDropdown(c)}
           <button class="icon-btn" title="Add timestamped note" onclick="startAddNote('calendar','${c.id}')">📝 Add note</button>
           <button class="icon-btn" title="Edit" onclick="startEdit('calendar','${c.id}')">✏️ Edit</button>
           <button class="btn danger" onclick="deleteItem('calendar','${c.id}')">${isDeleting('calendar', c.id) ? '⚠️ Click again' : 'Delete'}</button>
@@ -4816,9 +4910,9 @@ function renderSomeday() {
         ` : ''}
       </div>
       <div class="item-actions">
+        ${renderStatusDropdown(s)}
         <button class="icon-btn" title="Add timestamped note" onclick="startAddNote('someday','${s.id}')">📝 Add note</button>
         <button class="icon-btn" title="Promote to active Project" onclick="promoteSomeday('${s.id}')">↑ Promote to Project</button>
-        <button class="icon-btn" title="Move to Next Actions" onclick="somedayToNext('${s.id}')">→ Next Action</button>
         <button class="icon-btn" title="Edit" onclick="startEdit('someday','${s.id}')">✏️ Edit</button>
         <button class="btn danger" onclick="deleteItem('someday','${s.id}')">${isDeleting('someday', s.id) ? '⚠️ Click again' : 'Delete'}</button>
       </div>
@@ -5507,7 +5601,6 @@ function updateMobileBadges() {
 }
 
 // Hook into render so mobile badges stay current
-const _renderOrig = render;
 render = function(...args) {
   _renderOrig(...args);
   updateMobileBadges();
