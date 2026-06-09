@@ -1717,63 +1717,20 @@
 // =================================================================
 const STORAGE_KEY = 'kevin-gtd-v1';
 
-// DEFAULT_DATA contains generic illustrative examples only — no personal information.
-// Your real data lives in gtd-cloud-state.json (connected via the cloud sync folder).
-// New users who haven't connected a folder will see this starter data.
+// DEFAULT_DATA is empty. New users start with a clean slate — every bucket renders
+// its own empty-state UI guiding the user to add their first item. The review
+// checklists (DAILY_ITEMS, WEEKLY_ITEMS, MONTHLY_ITEMS) and help docs below are
+// app behavior, not user data, and remain populated.
 const DEFAULT_DATA = {
   inbox: [],
-  next: [
-    { id: 'n1', text: 'Draft Q3 goals summary for the team', context: '@draft', projectId: 'p1', priority: 'high', energy: 'focused', created: '2026-05-15', done: false },
-    { id: 'n2', text: 'Send kickoff email to design agency contact', context: '@email', projectId: 'p2', priority: 'high', energy: 'quick', created: '2026-05-15', done: false },
-    { id: 'n3', text: 'Prepare first-week onboarding checklist for new hire', context: '@computer', projectId: 'p3', priority: 'high', energy: 'focused', created: '2026-05-15', done: false, dueDate: '2026-05-28' },
-    { id: 'n4', text: 'Return call to account manager re: contract renewal', context: '@phone', projectId: null, priority: 'high', energy: 'quick', created: '2026-05-17', done: false, notes: 'They called twice — wants to discuss pricing before end of month.' },
-    { id: 'n5', text: 'Review contractor proposal and mark up with questions', context: '@computer', projectId: 'p2', priority: 'med', energy: 'focused', created: '2026-05-15', done: false },
-    { id: 'n6', text: 'Block recurring 30-min weekly review on calendar', context: '@computer', projectId: null, priority: 'med', energy: 'quick', created: '2026-05-15', done: false },
-    { id: 'n7', text: 'Decide: attend industry conference in October?', context: '@think', projectId: null, priority: 'low', energy: 'focused', created: '2026-05-15', done: false, notes: 'Registration deadline is July 1. Budget line exists. Check travel calendar first.' },
-    { id: 'n8', text: 'Ask manager about budget approval for team offsite', context: '@ask', projectId: 'p4', priority: 'med', energy: 'quick', created: '2026-05-17', done: false }
-  ],
-  projects: [
-    { id: 'p1', title: 'Q3 planning cycle', outcome: 'Team has clear, agreed Q3 goals with owners and milestones', area: 'a1', status: 'active', priority: 'high', created: '2026-05-10' },
-    { id: 'p2', title: 'Website redesign', outcome: 'New site live with updated brand, copy, and navigation by end of Q3', area: 'a1', status: 'active', priority: 'high', created: '2026-05-10' },
-    { id: 'p3', title: 'Onboard new team member', outcome: 'New hire fully productive and integrated within 30 days', area: 'a2', status: 'active', priority: 'high', created: '2026-05-15' },
-    { id: 'p4', title: 'Team offsite planning', outcome: 'Full-day offsite booked, agenda set, and team aligned on goals', area: 'a2', status: 'active', priority: 'med', created: '2026-05-10' },
-    { id: 'p5', title: 'Personal skill development — public speaking', outcome: 'Completed one course and delivered one internal talk by year end', area: 'a3', status: 'active', priority: 'low', created: '2026-05-10' }
-  ],
-  waiting: [
-    { id: 'w1', text: 'Contract redline with tracked changes', who: 'Legal team', since: '2026-05-14', projectId: 'p2' },
-    { id: 'w2', text: 'Budget approval for Q3 planning offsite', who: 'Finance / CFO', since: '2026-05-16', projectId: 'p4' },
-    { id: 'w3', text: 'Bio and headshot for onboarding directory page', who: 'New hire', since: '2026-05-19', projectId: 'p3' }
-  ],
-  calendar: [
-    { id: 'c1', text: 'Team quarterly review', date: '2026-05-28', projectId: 'p1' },
-    { id: 'c2', text: '1:1 with manager', date: '2026-05-23', projectId: null },
-    { id: 'c3', text: 'New hire start date', date: '2026-06-02', projectId: 'p3' },
-    { id: 'c4', text: 'Website redesign kickoff call', date: '2026-05-27', projectId: 'p2' },
-    { id: 'c5', text: 'Annual dentist appointment', date: '2026-06-10', projectId: null }
-  ],
-  someday: [
-    { id: 's1', text: 'Write a personal newsletter or blog', created: '2026-05-10' },
-    { id: 's2', text: 'Take an online course in data analysis or SQL', created: '2026-05-10' },
-    { id: 's3', text: 'Explore a team mentorship or buddy program', created: '2026-05-10' }
-  ],
-  areas: [
-    { id: 'a1', title: 'Work delivery & strategy', desc: 'Drive key initiatives forward — planning, execution, and stakeholder alignment.' },
-    { id: 'a2', title: 'Team & people', desc: 'Hire, develop, and support the people around you. Build a high-trust, high-output team.' },
-    { id: 'a3', title: 'Learning & growth', desc: 'Invest in your own skills, knowledge, and professional development.' },
-    { id: 'a4', title: 'Health & energy', desc: 'Maintain the physical and mental habits that keep you performing at your best.' },
-    { id: 'a5', title: 'Home & personal', desc: 'Personal commitments, family, finances, and everything outside of work.' }
-  ],
+  next: [],
+  projects: [],
+  waiting: [],
+  calendar: [],
+  someday: [],
+  areas: [],
   reviewState: { daily: {}, weekly: {}, monthly: {} },
-  sessionlog: [
-    {
-      id: 'g-welcome',
-      ts: new Date().toISOString(),
-      title: 'Welcome to your GTD system',
-      body: "This is your Session Log — use it to record what you worked on, decisions made, and context for your future self.\n\nGETTING STARTED\n1. Connect your cloud folder (top-right button) so your data persists across devices and browsers\n2. Clear the sample data from Next Actions and Projects, then add your own\n3. Use Quick Capture (top of any tab) to toss anything into your Inbox — process it during your next review\n4. Run a Weekly Review every Friday: Inbox → Next Actions → Projects → Waiting For → Calendar\n\nCONTEXTS\nTag each Next Action with the context where it can be done:\n@computer, @phone, @email, @meeting, @ask, @draft, @think, @errands\n\nThis starter data is generic — delete it freely and replace with your own.",
-      tags: ['welcome', 'getting-started'],
-      author: 'system'
-    }
-  ]
+  sessionlog: []
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2311,7 +2268,7 @@ function setCloudFolderName(name) {
 }
 let cloudSaveTimer = null;
 let cloudLastSavedAt = null;
-let cloudBootstrapped = false; // true once we've confirmed a real cloud load
+let cloudBootstrapped = false; // true once we've successfully loaded from cloud (or confirmed no cloud file exists)
 let cloudDataProtected = false;
 let cloudDataProtectedMsg = '';
 
@@ -2326,16 +2283,21 @@ function clearDataProtected() {
   cloudDataProtectedMsg = '';
 }
 
-// Guard: returns true if in-memory data still looks like built-in sample set.
-// Blocks accidental cloud overwrites before bootstrap has loaded real data.
+// Guard: returns true if in-memory data is empty (no user content in any bucket).
+// Combined with the cloudBootstrapped flag, this blocks the destructive race
+// where the app's initial empty state could overwrite real cloud data before
+// the first cloud read has completed. Once the user adds anything OR cloud
+// has loaded any items, saves go through normally.
 function looksLikeDefaultData(d) {
   if (!d) return true;
-  const next = d.next || [];
-  const projects = d.projects || [];
-  const sessionlog = d.sessionlog || [];
-  return next.some(n => n.id === 'n1' || n.id === 'n2') ||
-         projects.some(p => p.id === 'p1' || p.id === 'p2') ||
-         sessionlog.some(e => e.id === 'g-welcome');
+  return (d.inbox || []).length === 0 &&
+         (d.next || []).length === 0 &&
+         (d.projects || []).length === 0 &&
+         (d.waiting || []).length === 0 &&
+         (d.calendar || []).length === 0 &&
+         (d.someday || []).length === 0 &&
+         (d.areas || []).length === 0 &&
+         (d.sessionlog || []).length === 0;
 }
 
 
