@@ -4494,7 +4494,7 @@ let stalledFilter = null;
 let dashStalledFilter = null;
 
 function renderProjects() {
-  const completedCount = data.projects.filter(p => p.status === 'completed').length;
+  const completedCount = data.projects.filter(p => p.status === 'done' || p.status === 'completed').length;
 
   // --- Area filter toolbar ---
   const filterEl = document.getElementById('areaFilters');
@@ -4525,7 +4525,7 @@ function renderProjects() {
 
   let projects = data.projects.slice();
   if (areaFilter) projects = projects.filter(p => p.area === areaFilter);
-  if (!projectsShowCompleted) projects = projects.filter(p => p.status !== 'completed');
+  if (!projectsShowCompleted) projects = projects.filter(p => p.status !== 'done' && p.status !== 'completed');
   if (stalledFilter !== null) {
     projects = projects.filter(p => {
       const isStalled = !data.next.some(n => n.projectId === p.id && !n.done);
@@ -4542,8 +4542,12 @@ function renderProjects() {
   );
 
   // group by status; within each group, sort by priority then alpha
-  const groups = { active: [], blocked: [], someday: [], completed: [] };
-  projects.forEach(p => { (groups[p.status] || groups.active).push(p); });
+  const groups = { active: [], blocked: [], someday: [], done: [] };
+  projects.forEach(p => {
+    // Migrate legacy 'completed' status to 'done' bucket for display
+    const g = (p.status === 'completed') ? 'done' : p.status;
+    (groups[g] || groups.active).push(p);
+  });
   const prio = { high: 0, med: 1, low: 2 };
   Object.keys(groups).forEach(g => {
     groups[g].sort((a, b) => {
@@ -4556,9 +4560,9 @@ function renderProjects() {
 
   const list = document.getElementById('list-projects');
   let html = '';
-  ['active', 'blocked', 'someday', 'completed'].forEach(status => {
+  ['active', 'blocked', 'someday', 'done'].forEach(status => {
     if (groups[status].length === 0) return;
-    const label = { active: 'Active', blocked: 'Blocked / Waiting', someday: 'Someday', completed: 'Completed' }[status];
+    const label = { active: 'Active', blocked: 'Blocked / Waiting', someday: 'Someday', done: 'Completed' }[status];
     html += `<div class="group-label">${label} (${groups[status].length})</div>`;
     html += groups[status].map(p => renderProjectCard(p)).join('');
   });
@@ -4571,7 +4575,7 @@ function renderProjectCard(p) {
   const openLinked = linked.filter(n => !n.done);
   const area = data.areas.find(a => a.id === p.area);
   const isAdding = addingActionToProjectId === p.id;
-  const completedAge = p.status === 'completed' && p.completedDate ? formatAge(p.completedDate) : '';
+  const completedAge = (p.status === 'done' || p.status === 'completed') && (p.completed || p.completedDate) ? formatAge(p.completed || p.completedDate) : '';
   const ageStr = p.created ? formatAge(p.created) : '';
   return `
     <div class="project-card ${p.status === 'completed' || p.status === 'done' ? 'completed' : ''}">
@@ -4598,7 +4602,7 @@ function renderProjectCard(p) {
       <div class="linked-actions">
         <div class="label" style="display:flex;justify-content:space-between;align-items:center;">
           <span>Next Actions${linked.length > 0 ? ` (${openLinked.length} open · ${linked.length - openLinked.length} done)` : ''}</span>
-          ${p.status !== 'completed' ? `<button class="icon-btn" style="font-size:11px;text-transform:none;letter-spacing:0;font-weight:500;" onclick="startAddActionToProject('${p.id}')">${isAdding ? '✕ Cancel' : '+ Next Action'}</button>` : ''}
+          ${p.status !== 'completed' && p.status !== 'done' ? `<button class="icon-btn" style="font-size:11px;text-transform:none;letter-spacing:0;font-weight:500;" onclick="startAddActionToProject('${p.id}')">${isAdding ? '✕ Cancel' : '+ Next Action'}</button>` : ''}
         </div>
         ${linked.length === 0 && !isAdding ? '<div class="next-action-empty">⚠ No next action — project is stalled. Add one to keep it moving.</div>' :
           linked.length > 0 ? '<ul>' + linked.map(n => `<li class="${n.done ? 'done' : ''}">${escapeHtml(n.context)} — ${escapeHtml(n.text)}</li>`).join('') + '</ul>' : ''
