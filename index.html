@@ -5043,15 +5043,15 @@ function renderDone() {
     const completedAge = (it.completed || it.completedDate) ? formatAge(it.completed || it.completedDate) : '';
     const kindLabel = it.kind === 'project' ? 'Project' : 'Action';
     return `
-      <div class="item">
-        <div class="item-header" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-          <span class="chip id">#${escapeHtml(it.id)}</span>
-          <span class="chip" style="background:#e0e7ff;color:#3730a3;">${kindLabel}</span>
-          <span class="chip status-done">done${completedAge ? ' · ' + completedAge + ' ago' : ''}</span>
-          ${project ? `<span class="chip project" onclick="focusItem('${project.id}')" style="cursor:pointer;">${escapeHtml(project.text.slice(0, 40))}</span>` : ''}
-        </div>
+      <div class="item done">
         <div class="item-body">
-          <div>${escapeHtml(it.text || '')}</div>
+          <div class="item-text">${escapeHtml(it.text || '')}${completedAge ? `<span class="age-tag">(completed ${completedAge} ago)</span>` : ''}</div>
+          <div class="item-meta">
+            <span class="chip id">#${escapeHtml(it.id)}</span>
+            <span class="chip" style="background:#e0e7ff;color:#3730a3;">${kindLabel}</span>
+            <span class="chip status-done">done</span>
+            ${project ? `<span class="chip project" onclick="focusItem('${project.id}')" style="cursor:pointer;">↳ ${escapeHtml(project.text.slice(0, 40))} <span style="opacity:0.7">(${project.id})</span></span>` : ''}
+          </div>
           ${it.notes ? `<div class="item-notes">${linkifyNotes(it.notes)}</div>` : ''}
         </div>
         <div class="item-actions">
@@ -5131,25 +5131,36 @@ function renderFocus() {
     html += `<div class="group-label">${labels[group]} (${groups[group].length})</div>`;
     html += groups[group].map(it => {
       const project = it.projectId ? data.items.find(x => x.id === it.projectId && x.kind === 'project') : null;
+      const todayStr2 = new Date().toISOString().slice(0,10);
+      const focusChip = it.focusDate === todayStr2
+        ? `<span class="chip focus-today">⭐ today's focus</span>`
+        : `<span class="chip focus-later">⭐ focus ${it.focusDate}</span>`;
       const dueChip = it.dueDate
-        ? `<span class="chip ${daysFromToday(it.dueDate) < 0 ? 'due-overdue' : daysFromToday(it.dueDate) <= 3 ? 'due-soon' : 'due-later'}">due ${it.dueDate}</span>`
+        ? (() => {
+            const days = daysFromToday(it.dueDate);
+            const cls = days < 0 ? 'due-overdue' : days <= 3 ? 'due-soon' : 'due-later';
+            const label = days < 0 ? `📅 OVERDUE ${Math.abs(days)}d` : days === 0 ? '📅 due today' : days <= 7 ? `📅 due in ${days}d` : `📅 due ${it.dueDate}`;
+            return `<span class="chip ${cls}">${label}</span>`;
+          })()
         : '';
-      const focusChip = `<span class="chip focus-today">focus ${it.focusDate}</span>`;
-      const priorityChip = it.priority === 'high' ? `<span class="chip priority-high">↑ high</span>` :
-                          it.priority === 'low' ? `<span class="chip priority-low">↓ low</span>` : '';
-      const contextChip = (it.context || (it.tags && it.tags[0])) ? `<span class="chip context">${escapeHtml(it.context || it.tags[0])}</span>` : '';
+      const ctxValue = it.context || (it.tags && it.tags.find(t => typeof t === 'string' && t.startsWith('@'))) || '';
       return `
-        <div class="item">
-          <div class="item-header" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-            <span class="chip id">#${escapeHtml(it.id)}</span>
-            ${focusChip}
-            ${priorityChip}
-            ${contextChip}
-            ${dueChip}
-            ${project ? `<span class="chip project" onclick="focusItem('${project.id}')" style="cursor:pointer;">${escapeHtml(project.text.slice(0, 40))}</span>` : ''}
-          </div>
+        <div class="item ${it.status === 'done' ? 'done' : ''}">
+          <input type="checkbox" ${it.status === 'done' ? 'checked' : ''} onchange="toggleNextDone('${it.id}')" />
           <div class="item-body">
-            <div>${escapeHtml(it.text || '')}</div>
+            <div class="item-text">${escapeHtml(it.text || '')}${it.created ? `<span class="age-tag">(${formatAge(it.created)})</span>` : ''}</div>
+            <div class="item-meta">
+              <span class="chip id">#${escapeHtml(it.id)}</span>
+              ${ctxValue ? `<span class="chip context">${escapeHtml(ctxValue)}</span>` : ''}
+              ${project ? `<span class="chip project" onclick="focusItem('${project.id}')" style="cursor:pointer;">↳ ${escapeHtml(project.text.slice(0, 40))} <span style="opacity:0.7">(${project.id})</span></span>` : ''}
+              <select class="priority-select ${it.priority || 'med'}" onchange="setNextPriority('${it.id}',this.value)" title="Change priority">
+                <option value="high" ${(it.priority||'med')==='high'?'selected':''}>↑ high</option>
+                <option value="med"  ${(it.priority||'med')==='med' ?'selected':''}>· med</option>
+                <option value="low"  ${(it.priority||'med')==='low' ?'selected':''}>↓ low</option>
+              </select>
+              ${focusChip}
+              ${dueChip}
+            </div>
             ${it.notes ? `<div class="item-notes">${linkifyNotes(it.notes)}</div>` : ''}
           </div>
           <div class="item-actions">
