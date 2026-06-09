@@ -2448,6 +2448,73 @@ function renderStatusDropdown(item) {
   return `<select class="status-dropdown" data-id="${item.id}" onchange="changeItemStatus('${item.id}', this.value)" title="Status">${opts}</select>`;
 }
 
+// -----------------------------------------------------------------
+// Kind conversion (Action ↔ Project) — preserves all fields, adjusts
+// kind/status. Used when scope grows (single action becomes multi-step
+// project) or shrinks (project reduces to a single action).
+// -----------------------------------------------------------------
+function convertToProject(id) {
+  const item = data.items.find(it => it.id === id);
+  if (!item) return;
+  if (item.kind !== 'action') {
+    showToast('Only Next Actions can be converted to Projects');
+    return;
+  }
+  const oldStatus = item.status;
+  item.kind = 'project';
+  item.status = 'active';
+  // If linked to another project, detach (projects aren't sub-projects in our model)
+  if (item.projectId) {
+    item.notes = (item.notes ? item.notes + '\n\n' : '') + '[was linked to project ' + item.projectId + ' before conversion]';
+    item.projectId = null;
+  }
+  // Seed outcome from text if not set — user can edit afterward
+  if (!item.outcome) item.outcome = item.text || '';
+  if (!Array.isArray(item.history)) item.history = [];
+  item.history.push({
+    ts: new Date().toISOString(),
+    note: 'Converted from action/' + oldStatus + ' to project/active'
+  });
+  syncBucketViews();
+  save();
+  render();
+  showToast('Converted to Project — outcome seeded from text, edit to refine');
+}
+
+function convertToAction(id) {
+  const item = data.items.find(it => it.id === id);
+  if (!item) return;
+  if (item.kind !== 'project') {
+    showToast('Only Projects can be converted to Next Actions');
+    return;
+  }
+  // Refuse if open actions are still linked
+  const linkedOpen = data.items.filter(it =>
+    it.kind === 'action' && it.projectId === id && it.status !== 'done'
+  );
+  if (linkedOpen.length > 0) {
+    showToast('Cannot convert — ' + linkedOpen.length + ' open action' + (linkedOpen.length === 1 ? '' : 's') + ' still linked. Complete/delete or unlink them first.', { duration: 4500 });
+    return;
+  }
+  const oldStatus = item.status;
+  item.kind = 'action';
+  item.status = 'next';
+  // Move outcome into notes so it isn't lost
+  if (item.outcome) {
+    item.notes = 'Outcome: ' + item.outcome + (item.notes ? '\n\n' + item.notes : '');
+    item.outcome = null;
+  }
+  if (!Array.isArray(item.history)) item.history = [];
+  item.history.push({
+    ts: new Date().toISOString(),
+    note: 'Converted from project/' + oldStatus + ' to action/next'
+  });
+  syncBucketViews();
+  save();
+  render();
+  showToast('Converted to Next Action — outcome preserved in notes');
+}
+
 function _buildV2Payload() {
   const items = (data.items || []).map(it => {
     const c = { ...it };
@@ -4344,6 +4411,7 @@ function renderNext() {
           ${!n.done && isStarted ? `<button class="icon-btn" title="Mark not started (clear flag)" onclick="startNext('${n.id}')">↺ Unstart</button>` : ''}
           ${!n.done ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('next','${n.id}')">📝 Add note</button>` : ''}
           <button class="icon-btn" title="Edit" onclick="startEdit('next','${n.id}')">✏️ Edit</button>
+          ${!n.done ? `<button class="icon-btn" title="Convert this Next Action into a multi-step Project (preserves all fields)" onclick="convertToProject('${n.id}')">↑ To Project</button>` : ''}
           <button class="btn danger" onclick="deleteItem('next','${n.id}')">${isDeleting('next', n.id) ? '⚠️ Click again' : 'Delete'}</button>
         </div>
       </div>
@@ -4672,6 +4740,7 @@ function renderProjectCard(p) {
         </select>
         ${p.status !== 'completed' && p.status !== 'done' ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('projects','${p.id}')">📝 Add note</button>` : ''}
         <button class="icon-btn" title="Edit project" onclick="startEdit('projects','${p.id}')">✏️ Edit</button>
+        <button class="icon-btn" title="Convert this Project into a single Next Action (only allowed when no open linked actions remain)" onclick="convertToAction('${p.id}')">↓ To Action</button>
         <button class="btn danger" onclick="deleteItem('projects','${p.id}')">${isDeleting('projects', p.id) ? '⚠️ Click again' : 'Delete'}</button>
       </div>
     </div>
