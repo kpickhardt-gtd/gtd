@@ -1717,35 +1717,17 @@
 // =================================================================
 const STORAGE_KEY = 'kevin-gtd-v1';
 
-// DEFAULT_DATA is empty. New users start with a clean slate — every bucket renders
-// its own empty-state UI guiding the user to add their first item. The review
-// checklists (DAILY_ITEMS, WEEKLY_ITEMS, MONTHLY_ITEMS) and help docs below are
-// app behavior, not user data, and remain populated.
+// DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
 const DEFAULT_DATA = {
-  inbox: [],
-  next: [],
-  projects: [],
-  waiting: [],
-  calendar: [],
-  someday: [],
+  items: [],
   areas: [],
+  nextIdCounters: {},
   reviewState: { daily: {}, weekly: {}, monthly: {} },
+  horizons: {},
   sessionlog: []
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HELP DOCUMENTATION
-// Each entry = one section in the Help modal. To add or update a section:
-//   • Add a new object to the array, or edit the `body` HTML of an existing one.
-//   • `id`    — unique slug (used for deep-linking and scroll targets)
-//   • `title` — shown in the left nav
-//   • `sub`   — (optional) true = indent as sub-item in the nav
-//   • `body`  — raw HTML rendered in the content pane; supports <h3>, <p>, <ul>,
-//               <ol>, <strong>, <em>, <code>, and .help-callout / .help-tag divs
-//   • `updated` — date string shown at the bottom of the section
-// ─────────────────────────────────────────────────────────────────────────────
-// Help docs are loaded from help.json at runtime.
-// HELP_DOCS_FALLBACK below is used if the fetch fails (e.g. offline).
+// Help docs are loaded from help.json at runtime; HELP_DOCS_FALLBACK is used if fetch fails.
 let HELP_DOCS = [];
 function _loadHelpDocs() {
   return fetch('./help.json')
@@ -2138,94 +2120,251 @@ const MONTHLY_ITEMS = [
 ];
 
 let data = load();
-
-
-// One-time patches that update fields on existing items. Each patch runs at
-// most once per device (tracked in delivered set). Useful when we add a new
-// field and want to backfill existing items without a full data reset.
+syncBucketViews();
+// One-time patches that update fields on existing items.
 // Format: { 'patch-id': { bucket: 'next'|'projects'|etc, updates: { itemId: { field: value } } } }
+// NOTE: in v2 these are effectively no-ops (legacy bucket+id keys no longer match).
 const PATCHES = {};
+
+// V2 helpers — data.items[] is canonical; bucket arrays derived via syncBucketViews()
+function migrateV1ToV2(d) {
+  if (!d) return d;
+  if (d.items) return d; // already v2
+  const items = [];
+  const dayCounters = {};
+  const idMap = {}; // old id -> new id
+
+  function ymdOf(s) {
+    if (!s) return new Date().toISOString().slice(2,10).replace(/-/g, '');
+    const m = String(s).slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return new Date().toISOString().slice(2,10).replace(/-/g, '');
+    return (m[1].slice(2)) + m[2] + m[3];
+  }
+  function allocId(ymd) {
+    dayCounters[ymd] = (dayCounters[ymd] || 0) + 1;
+    return ymd + '-' + String(dayCounters[ymd]).padStart(2, '0');
+  }
+
+  const records = [];
+  ['inbox','next','waiting','calendar','someday','projects'].forEach(b =>
+    (d[b] || []).forEach(x => records.push({ src: x, bucket: b })));
+  records.sort((a, b) => {
+    const aDate = (a.src.created || a.src.since || '').slice(0,10);
+    const bDate = (b.src.created || b.src.since || '').slice(0,10);
+    if (aDate !== bDate) return aDate.localeCompare(bDate);
+    return String(a.src.id || '').localeCompare(String(b.src.id || ''));
+  });
+
+  records.forEach(r => {
+    const ymd = ymdOf(r.src.created || r.src.since);
+    const newId = allocId(ymd);
+    if (r.src.id) idMap[r.src.id] = newId;
+    r.newId = newId;
+  });
+
+  records.forEach(r => {
+    const s = r.src;
+    const bucket = r.bucket;
+    let kind, status;
+    if (bucket === 'inbox') { kind = 'inbox'; status = undefined; }
+    else if (bucket === 'projects') {
+      kind = 'project';
+      const raw = s.status || 'active';
+      const map = { completed: 'done', complete: 'done', finished: 'done', cancelled: 'done', archived: 'done' };
+      status = map[raw] || raw;
+      if (!['active','blocked','someday','done'].includes(status)) status = 'active';
+    } else {
+      kind = 'action';
+      if (bucket === 'next')          status = s.done ? 'done' : 'next';
+      else if (bucket === 'waiting')  status = 'waiting';
+      else if (bucket === 'calendar') status = s.done ? 'done' : 'next';
+      else if (bucket === 'someday')  status = 'someday';
+    }
+    const item = {
+      id: r.newId, kind,
+      text: (kind === 'project' ? (s.title || s.text || '') : (s.text || '')),
+      notes: s.notes || '',
+      tags: s.context ? [s.context.startsWith('@') ? s.context : '@' + s.context] : [],
+      created: s.created || '',
+      completed: s.completed || null,
+      priority: s.priority || 'med',
+      projectId: (s.projectId && idMap[s.projectId]) || s.projectId || null,
+      areaId: kind === 'project' ? (s.area || null) : null,
+      dueDate: (bucket === 'calendar' && s.date) ? s.date : (s.dueDate || null),
+      scheduledAt: s.scheduledAt || null,
+      focusDate: s.focusDate || null,
+      outcome: kind === 'project' ? (s.outcome || '') : null,
+      who: bucket === 'waiting' ? (s.who || '') : null,
+      since: bucket === 'waiting' ? (s.since || '') : null,
+      energy: s.energy || null,
+      history: [{ ts: new Date().toISOString(), note: 'v1→v2 id=' + (s.id || '?') + ' bucket=' + bucket }]
+    };
+    if (status !== undefined) item.status = status;
+    if (s._origNext) item._origNext = s._origNext;
+    if (s.startedDate) item.startedDate = s.startedDate;
+    if (s.resolved) item.resolved = s.resolved;
+    if (s.resolvedDate) item.resolvedDate = s.resolvedDate;
+    if (s.captured) item.captured = s.captured;
+    items.push(item);
+  });
+
+  const newAreas = (d.areas || []).map(a => ({
+    id: a.id,
+    name: a.title || a.name || '',
+    description: a.desc || a.description || '',
+    active: a.active !== false,
+    targetPct: a.targetPct || 0,
+    goals: a.goals || []
+  }));
+
+  return {
+    items,
+    areas: newAreas,
+    nextIdCounters: dayCounters,
+    reviewState: d.reviewState || { daily: {}, weekly: {}, monthly: {} },
+    horizons: d.horizons || {},
+    sessionlog: d.sessionlog || []
+  };
+}
+
+function syncBucketViews() {
+  if (!data) return;
+  if (!data.items) data.items = [];
+  if (!data.areas) data.areas = [];
+
+  data.items.forEach(it => {
+    it.done = (it.status === 'done');
+    if (it.dueDate && !it.date) it.date = it.dueDate;
+    if (it.kind === 'project' && it.text && !it.title) it.title = it.text;
+    if (it.status === 'done' && it.kind === 'action' && it.who) it.resolved = true;
+    if (it.kind === 'project' && it.areaId && !it.area) it.area = it.areaId;
+    if (it.kind === 'action' && !it.context) {
+      const tags = it.tags || [];
+      const ctx = tags.find(t => typeof t === 'string' && t.startsWith('@')) || tags[0];
+      if (ctx) it.context = ctx;
+    }
+  });
+  data.areas.forEach(a => {
+    if (a.name && !a.title) a.title = a.name;
+    if (a.description && !a.desc) a.desc = a.description;
+  });
+
+  data.inbox    = data.items.filter(it => it.kind === 'inbox');
+  data.next     = data.items.filter(it => it.kind === 'action');
+  data.projects = data.items.filter(it => it.kind === 'project');
+  data.waiting  = data.items.filter(it => it.kind === 'action' && (it.status === 'waiting' || (it.who && it.since)));
+  data.calendar = data.items.filter(it => it.kind === 'action' && (it.dueDate || it.scheduledAt || it.date));
+  data.someday  = data.items.filter(it => it.kind === 'action' && it.status === 'someday');
+}
+
+function allocNextItemId() {
+  const ymd = new Date().toISOString().slice(2,10).replace(/-/g, '');
+  if (!data.nextIdCounters) data.nextIdCounters = {};
+  let n = (data.nextIdCounters[ymd] || 0) + 1;
+  while (data.items && data.items.some(it => it.id === ymd + '-' + String(n).padStart(2,'0'))) n++;
+  data.nextIdCounters[ymd] = n;
+  return ymd + '-' + String(n).padStart(2,'0');
+}
+
+function addItemToBucket(bucket, fields) {
+  if (!data.items) data.items = [];
+  const bucketToKindStatus = {
+    inbox:    { kind: 'inbox' },
+    next:     { kind: 'action', status: 'next' },
+    waiting:  { kind: 'action', status: 'waiting' },
+    calendar: { kind: 'action', status: 'next' },
+    someday:  { kind: 'action', status: 'someday' },
+    projects: { kind: 'project', status: 'active' }
+  };
+  const ks = bucketToKindStatus[bucket] || { kind: 'action', status: 'next' };
+  const f = fields || {};
+  const today = new Date().toISOString().slice(0,10);
+  let tags = f.tags;
+  if (!tags && f.context) tags = [f.context.startsWith('@') ? f.context : '@' + f.context];
+  if (!tags) tags = [];
+  const text = f.text || f.title || '';
+  const areaId = f.areaId || f.area || null;
+  const dueDate = f.dueDate || f.date || null;
+
+  const item = {
+    id: allocNextItemId(),
+    kind: ks.kind,
+    text,
+    notes: f.notes || '',
+    tags,
+    created: f.created || today,
+    completed: f.completed || null,
+    priority: f.priority || 'med',
+    projectId: f.projectId || null,
+    areaId,
+    dueDate,
+    scheduledAt: f.scheduledAt || null,
+    focusDate: f.focusDate || null,
+    outcome: ks.kind === 'project' ? (f.outcome || '') : null,
+    who: ks.kind === 'action' && bucket === 'waiting' ? (f.who || '') : (f.who || null),
+    since: ks.kind === 'action' && bucket === 'waiting' ? (f.since || today) : (f.since || null),
+    energy: f.energy || null,
+    history: f.history || []
+  };
+  if (ks.status !== undefined) item.status = ks.status;
+  if (f._origNext) item._origNext = f._origNext;
+  if (f.captured) item.captured = f.captured;
+  if (ks.kind === 'project' && f.status) {
+    const map = { completed: 'done', complete: 'done', finished: 'done', cancelled: 'done', archived: 'done' };
+    item.status = map[f.status] || f.status;
+  }
+  data.items.push(item);
+  syncBucketViews();
+  return item;
+}
+
+function removeItemById(id) {
+  if (!data.items) { syncBucketViews(); return; }
+  const idx = data.items.findIndex(it => it.id === id);
+  if (idx >= 0) data.items.splice(idx, 1);
+  syncBucketViews();
+}
+
+function _buildV2Payload() {
+  const items = (data.items || []).map(it => {
+    const c = { ...it };
+    if (c.kind === 'project' && c.status === 'completed') c.status = 'done';
+    delete c.done; delete c.date;
+    if (c.kind === 'project') delete c.title;
+    delete c.area;
+    if (c.context) {
+      const ctx = c.context.startsWith('@') ? c.context : '@' + c.context;
+      c.tags = Array.isArray(c.tags) ? c.tags.slice() : [];
+      if (!c.tags.includes(ctx)) c.tags.unshift(ctx);
+      delete c.context;
+    }
+    return c;
+  });
+  const areas = (data.areas || []).map(a => {
+    const c = { ...a };
+    if (c.title && !c.name) c.name = c.title;
+    if (c.desc && !c.description) c.description = c.desc;
+    delete c.title; delete c.desc;
+    return c;
+  });
+  return {
+    items,
+    areas,
+    nextIdCounters:  data.nextIdCounters || {},
+    reviewState:     data.reviewState || { daily: {}, weekly: {}, monthly: {} },
+    horizons:        data.horizons || {},
+    sessionlog:      data.sessionlog || []
+  };
+}
 
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return clone(DEFAULT_DATA);
     const parsed = JSON.parse(raw);
-    const merged = { ...clone(DEFAULT_DATA), ...parsed };
-
-    // Deliver any newly-introduced seed items into user's data without
-    // overwriting their edits or resurrecting items they've deleted.
-    // We track which seed IDs have already been "seen" so each is delivered
-    // at most once per device.
-    const deliveredKey = STORAGE_KEY + ':deliveredSeeds';
-    const delivered = new Set(JSON.parse(localStorage.getItem(deliveredKey) || '[]'));
-    let changed = false;
-
-    ['next','projects','waiting','calendar','someday','areas','sessionlog'].forEach(bucket => {
-      const seedItems = DEFAULT_DATA[bucket] || [];
-      const currentIds = new Set((merged[bucket] || []).map(x => x.id));
-      seedItems.forEach(seed => {
-        const key = bucket + ':' + seed.id;
-        if (!delivered.has(key)) {
-          if (!currentIds.has(seed.id)) {
-            merged[bucket] = merged[bucket] || [];
-            merged[bucket].push(clone(seed));
-            changed = true;
-          }
-          delivered.add(key);
-        }
-      });
-    });
-
-    // Apply one-time field patches to existing items
-    Object.keys(PATCHES).forEach(patchId => {
-      const patchKey = 'patch:' + patchId;
-      if (delivered.has(patchKey)) return;
-      const patch = PATCHES[patchId];
-      const bucket = patch.bucket;
-      Object.entries(patch.updates).forEach(([id, updates]) => {
-        const item = (merged[bucket] || []).find(x => x.id === id);
-        if (item) {
-          // Only set fields that aren't already set, to avoid overwriting user edits
-          Object.entries(updates).forEach(([field, value]) => {
-            if (item[field] === undefined || item[field] === null || item[field] === '') {
-              item[field] = value;
-              changed = true;
-            }
-          });
-        }
-      });
-      delivered.add(patchKey);
-    });
-
-    localStorage.setItem(deliveredKey, JSON.stringify([...delivered]));
-
-    // Guaranteed injections — check by ID and insert if missing regardless of delivery state.
-    // Safer than seed delivery for entries that must always appear.
-    const guaranteed = [
-      {
-        bucket: 'sessionlog',
-        entry: {
-          id: 'g-review-2026-05-21',
-          ts: '2026-05-21T00:00:00.000Z',
-          title: 'Artifact review — recommendations from Claude (2026-05-21)',
-          body: "WHAT'S WORKING\n• All canonical GTD lists present with correct definitions and prompts\n• Projects/next-actions linkage and stalled-project detection working correctly\n• Workflow transitions (Waiting→Next, Someday→Next, Inbox routing) include provenance notes\n• Cloud sync (File System Access API + IndexedDB) is well-designed with polling and debounced save\n• Session Log concept is solid for cross-session continuity\n\nRECOMMENDED FIXES (prioritized)\n1. Run a review pass on seeded data — many May items are now overdue; mark done or delete resolved items\n2. Fix boot sequence — attempt cloud load before rendering default data to prevent stale-seed overwrite on new devices\n3. Add inline context/project prompt when processing Inbox → Next Action (currently defaults to @computer/med with no project)\n4. Add a \"Start\" button on next actions to make the in-progress state reachable from the UI (field exists but nothing sets it)\n5. Group Calendar tab by Past / Today / Upcoming\n6. Show linked projects inside each Area of Focus card (for weekly review \"anything neglected?\" scan)\n\nMINOR POLISH\n• \"Show completed\" toggle on Next Actions doesn't persist across reloads\n• No keyboard shortcut to focus the Quick Capture input\n• Waiting-item round-trip metadata section is visually easy to miss",
-          tags: ['review', 'recommendations', 'claude'],
-          author: 'claude'
-        }
-      }
-    ];
-    guaranteed.forEach(({ bucket, entry }) => {
-      merged[bucket] = merged[bucket] || [];
-      if (!merged[bucket].find(x => x.id === entry.id)) {
-        merged[bucket].push(entry);
-        changed = true;
-      }
-    });
-
-    if (changed) {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch(e) {}
-    }
+    const v2 = parsed && parsed.items ? parsed : migrateV1ToV2(parsed);
+    const merged = { ...clone(DEFAULT_DATA), ...v2 };
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch(e) {}
     return merged;
   } catch (e) {
     return clone(DEFAULT_DATA);
@@ -2283,21 +2422,9 @@ function clearDataProtected() {
   cloudDataProtectedMsg = '';
 }
 
-// Guard: returns true if in-memory data is empty (no user content in any bucket).
-// Combined with the cloudBootstrapped flag, this blocks the destructive race
-// where the app's initial empty state could overwrite real cloud data before
-// the first cloud read has completed. Once the user adds anything OR cloud
-// has loaded any items, saves go through normally.
 function looksLikeDefaultData(d) {
   if (!d) return true;
-  return (d.inbox || []).length === 0 &&
-         (d.next || []).length === 0 &&
-         (d.projects || []).length === 0 &&
-         (d.waiting || []).length === 0 &&
-         (d.calendar || []).length === 0 &&
-         (d.someday || []).length === 0 &&
-         (d.areas || []).length === 0 &&
-         (d.sessionlog || []).length === 0;
+  return (d.items || []).length === 0 && (d.areas || []).length === 0;
 }
 
 
@@ -2402,6 +2529,8 @@ async function saveToCloud() {
   if (!await ensurePermission(cloudFolderHandle, true)) { setCloudStatus('error', 'permission denied'); return false; }
   setCloudStatus('syncing');
   try {
+    const savedAt = new Date().toISOString();
+    const stateJson = JSON.stringify({ version: 2, savedAt, data: _buildV2Payload() }, null, 2);
     async function writeFSA(fname) {
       const fh = await cloudFolderHandle.getFileHandle(fname, { create: true });
       const w  = await fh.createWritable({ keepExistingData: false });
@@ -2684,7 +2813,7 @@ async function saveToDrive(force = false) {
   }
   setCloudStatus('syncing');
   try {
-    const stateJson = JSON.stringify({ version: 1, savedAt: new Date().toISOString(), data }, null, 2);
+    const stateJson = JSON.stringify({ version: 2, savedAt: new Date().toISOString(), data: _buildV2Payload() }, null, 2);
     await gdriveWriteFile(gdriveFileId, stateJson);
     cloudLastSavedAt = new Date().toISOString();
     await runDriveBackups(stateJson);
@@ -2780,14 +2909,16 @@ async function connectGoogleDrive() {
       const driveSavedAt = driveState?.savedAt || '';
       if (driveState?.data && driveSavedAt >= localSavedAt) {
         // Drive is current or newer — load it
-        data = { ...clone(DEFAULT_DATA), ...driveState.data };
+        data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(driveState.data) };
+        syncBucketViews();
         _persistAndRender(driveState.savedAt);
       } else if (driveState?.data) {
         // Local cache is newer — push it up, but ONLY if it's not default sample data
         if (looksLikeDefaultData(data)) {
           // Drive loaded real data but local is "newer" defaults — something cleared localStorage.
           // Trust Drive, not the stale local defaults.
-          data = { ...clone(DEFAULT_DATA), ...driveState.data };
+          data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(driveState.data) };
+          syncBucketViews();
           _persistAndRender(driveState.savedAt);
         } else {
           await saveToDrive(true);
@@ -2833,7 +2964,8 @@ async function connectGoogleDrive() {
       if (parsed?.data) {
         _activateDrive(existing.id, folder.id, folder.name);
         cloudBootstrapped = true;
-        data = { ...clone(DEFAULT_DATA), ...parsed.data };
+        data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(parsed.data) };
+        syncBucketViews();
         _persistAndRender(parsed.savedAt);
         setCloudStatus('synced', 'task list loaded');
         startCloudPolling();
@@ -2856,11 +2988,11 @@ async function connectGoogleDrive() {
 
     const choice = await showFolderChoiceDialog(folder.name);
     if (choice === 'cancel') { setCloudStatus(driveSyncActive ? 'synced' : 'no_folder', 'cancelled'); return; }
-    if (choice === 'blank') { data = clone(DEFAULT_DATA); render(); }
+    if (choice === 'blank') { data = clone(DEFAULT_DATA); syncBucketViews(); render(); }
 
     const newId = await gdriveCreateFile(
       folder.id, CLOUD_STATE_FILENAME,
-      JSON.stringify({ version: 1, savedAt: new Date().toISOString(), data }, null, 2)
+      JSON.stringify({ version: 2, savedAt: new Date().toISOString(), data: _buildV2Payload() }, null, 2)
     );
     _activateDrive(newId, folder.id, folder.name);
     cloudBootstrapped = true;
@@ -2886,7 +3018,8 @@ async function initDriveOnLoad() {
     await gdriveGetToken(false);   // silent — no popup
     const loaded = await loadFromDrive();
     if (loaded?.data) {
-      data = { ...clone(DEFAULT_DATA), ...loaded.data };
+      data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(loaded.data) };
+      syncBucketViews();
       driveSyncActive = true;
       cloudBootstrapped = true;
       clearDataProtected();
@@ -2964,7 +3097,8 @@ async function pollCloudOnce() {
     let localSavedAt = '';
     try { const m = localStorage.getItem(STORAGE_KEY + ':meta'); if (m) localSavedAt = JSON.parse(m).savedAt || ''; } catch(e) {}
     if (loaded.savedAt <= localSavedAt) return;
-    data = { ...clone(DEFAULT_DATA), ...loaded.data };
+    data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(loaded.data) };
+    syncBucketViews();
     cloudLastSavedAt = loaded.savedAt;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -3005,7 +3139,8 @@ async function pollCloudOnce() {
     if (parsed.savedAt <= localSavedAt) return; // Already up to date
     // Cloud is newer — apply
     setCloudStatus('connecting', 'pulling update…');
-    data = { ...clone(DEFAULT_DATA), ...parsed.data };
+    data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(parsed.data) };
+    syncBucketViews();
     cloudLastSavedAt = parsed.savedAt;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -3038,7 +3173,8 @@ async function pickCloudFolder() {
         if (meta) localSavedAt = JSON.parse(meta).savedAt || '';
       } catch(e) {}
       if (cloudSavedAt > localSavedAt) {
-        data = { ...clone(DEFAULT_DATA), ...existing.data };
+        data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(existing.data) };
+        syncBucketViews();
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
           localStorage.setItem(STORAGE_KEY + ':meta', JSON.stringify({ savedAt: cloudSavedAt }));
@@ -3473,8 +3609,11 @@ function resolveItem(bucket, id) {
   if (deletingKey === key) {
     const item = data[bucket].find(x => x.id === id);
     if (item) {
+      item.status = 'done';
+      item.completed = new Date().toISOString().slice(0,10);
       item.resolved = true;
-      item.resolvedDate = new Date().toISOString().slice(0,10);
+      item.resolvedDate = item.completed;
+      syncBucketViews();
     }
     deletingKey = null;
     if (deletingTimer) { clearTimeout(deletingTimer); deletingTimer = null; }
@@ -3525,13 +3664,11 @@ function submitWaitingToNext(id) {
   }
   // Restore original next-action metadata if this waiting item came from a next action
   const orig = w._origNext || {};
-  const newNextId = uid('n');
   const sysMsg = makeNoteEntry(
     'Moved from Waiting For (#' + w.id + ') back to Next Action (was waiting on ' + (w.who || '(unspecified)') + ' since ' + (w.since || '?') + ')',
     true
   );
-  data.next.push({
-    id: newNextId,
+  addItemToBucket('next', {
     text: text,
     context: orig.context || '@computer',
     projectId: w.projectId || null,
@@ -3539,13 +3676,13 @@ function submitWaitingToNext(id) {
     energy: orig.energy || '',
     notes: prependToNotes(w.notes || '', sysMsg),
     dueDate: orig.dueDate || null,
-    focusDate: orig.focusDate || null,
-    created: new Date().toISOString().slice(0,10),
-    done: false
+    focusDate: orig.focusDate || null
   });
-  // Mark waiting as resolved so it moves to the archive
-  w.resolved = true;
-  w.resolvedDate = new Date().toISOString().slice(0,10);
+  // Mark waiting item resolved (status → done) so it moves to the archive
+  w.status = 'done';
+  w.completed = new Date().toISOString().slice(0,10);
+  w.resolvedDate = w.completed;
+  syncBucketViews();
   nextActionPromptForId = null;
   save(); render();
 }
@@ -3560,14 +3697,12 @@ function nextToSomeday(id) {
   const n = data.next.find(x => x.id === id);
   if (!n) return;
   const sysMsg = makeNoteEntry('Moved from Next Action (#' + n.id + ') to Someday/Maybe', true);
-  data.someday.push({
-    id: uid('s'),
+  addItemToBucket('someday', {
     text: n.text,
     notes: prependToNotes(n.notes || '', sysMsg),
-    created: new Date().toISOString().slice(0,10),
     // Preserve next-action metadata for if it comes back
     _origNext: {
-      context: n.context || '@computer',
+      context: n.context || (n.tags && n.tags[0]) || '@computer',
       priority: n.priority || 'med',
       energy: n.energy || '',
       projectId: n.projectId || null,
@@ -3575,8 +3710,9 @@ function nextToSomeday(id) {
       focusDate: n.focusDate || null
     }
   });
-  n.done = true;
+  n.status = 'done';
   n.completed = new Date().toISOString().slice(0,10);
+  syncBucketViews();
   save(); render();
 }
 
@@ -3605,8 +3741,7 @@ function submitSomedayToNext(id) {
   if (!text) { if (inp) inp.focus(); return; }
   const orig = s._origNext || {};
   const sysMsg = makeNoteEntry('Moved from Someday/Maybe (#' + s.id + ') to Next Action', true);
-  data.next.push({
-    id: uid('n'),
+  addItemToBucket('next', {
     text: text,
     context: orig.context || '@computer',
     projectId: orig.projectId || null,
@@ -3614,12 +3749,10 @@ function submitSomedayToNext(id) {
     energy: orig.energy || '',
     notes: prependToNotes(s.notes || '', sysMsg),
     dueDate: orig.dueDate || null,
-    focusDate: orig.focusDate || null,
-    created: new Date().toISOString().slice(0,10),
-    done: false
+    focusDate: orig.focusDate || null
   });
   // Remove from someday — provenance lives in the new next action's notes
-  data.someday = data.someday.filter(x => x.id !== id);
+  removeItemById(id);
   somedayToNextPromptForId = null;
   save(); render();
 }
@@ -3715,16 +3848,13 @@ function submitAddActionToProject(projectId) {
   if (!inp) return;
   const text = inp.value.trim();
   if (!text) { inp.focus(); return; }
-  data.next.push({
-    id: uid('n'),
+  addItemToBucket('next', {
     text: text,
     context: '@computer',
     projectId: projectId,
     priority: 'med',
     energy: '',
-    notes: '',
-    created: new Date().toISOString().slice(0,10),
-    done: false
+    notes: ''
   });
   addingActionToProjectId = null;
   save(); render();
@@ -3747,8 +3877,8 @@ function toggleProjectsShowCompleted() {
 function exportData() {
   const payload = {
     exportedAt: new Date().toISOString(),
-    version: 1,
-    data: data
+    version: 2,
+    data: _buildV2Payload()
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -3777,8 +3907,9 @@ function importData(files) {
       const incoming = parsed && parsed.data ? parsed.data : parsed;
       if (!incoming || typeof incoming !== 'object') {
         importError = 'File is not a valid JSON object.';
-      } else if (!Array.isArray(incoming.next) && !Array.isArray(incoming.projects) && !Array.isArray(incoming.inbox)) {
-        importError = 'This does not look like a GTD export — missing expected fields (next, projects, inbox).';
+      } else if (!Array.isArray(incoming.items) &&
+                 !Array.isArray(incoming.next) && !Array.isArray(incoming.projects) && !Array.isArray(incoming.inbox)) {
+        importError = 'This does not look like a GTD export — missing expected fields (items, or v1 next/projects/inbox).';
       } else {
         pendingImport = incoming;
       }
@@ -3796,7 +3927,9 @@ function importData(files) {
 
 function confirmImport() {
   if (!pendingImport) return;
-  data = { ...clone(DEFAULT_DATA), ...pendingImport };
+  // Imports may still be v1-shape exports — migrate before adopting.
+  data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(pendingImport) };
+  syncBucketViews();
   pendingImport = null;
   importError = null;
   save();
@@ -3822,8 +3955,9 @@ function renderImportPreview() {
     return;
   }
   if (!pendingImport) { el.innerHTML = ''; return; }
-  const counts = ['next','projects','waiting','calendar','someday','areas','inbox','sessionlog']
-    .map(k => ({ k, n: Array.isArray(pendingImport[k]) ? pendingImport[k].length : 0 }));
+  const counts = ['items','next','projects','waiting','calendar','someday','areas','inbox','sessionlog']
+    .map(k => ({ k, n: Array.isArray(pendingImport[k]) ? pendingImport[k].length : 0 }))
+    .filter(c => c.n > 0);
   el.innerHTML = `
     <div style="padding:12px;background:var(--warning-soft);border:1px solid #fcd34d;border-radius:6px;">
       <div style="font-weight:600;margin-bottom:6px;">⚠️ Ready to import — this will REPLACE your current data</div>
@@ -3874,7 +4008,7 @@ function quickCapture() {
   const input = document.getElementById('quickCaptureInput');
   const text = input.value.trim();
   if (!text) return;
-  data.inbox.push({ id: uid('i'), text, captured: new Date().toISOString().slice(0,10) });
+  addItemToBucket('inbox', { text, captured: new Date().toISOString().slice(0,10) });
   input.value = '';
   save(); render();
 }
@@ -3885,9 +4019,9 @@ function addInbox() {
   const editId = editingId['inbox'];
   if (editId) {
     const item = data.inbox.find(x => x.id === editId);
-    if (item) item.text = text;
+    if (item) { item.text = text; syncBucketViews(); }
   } else {
-    data.inbox.push({ id: uid('i'), text, captured: new Date().toISOString().slice(0,10) });
+    addItemToBucket('inbox', { text, captured: new Date().toISOString().slice(0,10) });
   }
   document.getElementById('inbox-text').value = '';
   toggleForm('inbox');
@@ -3898,13 +4032,13 @@ function processInbox(id, where) {
   const item = data.inbox.find(i => i.id === id);
   if (!item) return;
   if (where === 'next') {
-    data.next.push({ id: uid('n'), text: item.text, context: '@computer', projectId: null, priority: 'med', energy: '', created: new Date().toISOString().slice(0,10), done: false });
+    addItemToBucket('next', { text: item.text, context: '@computer', priority: 'med' });
   } else if (where === 'project') {
-    data.projects.push({ id: uid('p'), title: item.text, outcome: '', area: '', status: 'active', created: new Date().toISOString().slice(0,10) });
+    addItemToBucket('projects', { text: item.text, outcome: '', areaId: null });
   } else if (where === 'someday') {
-    data.someday.push({ id: uid('s'), text: item.text, created: new Date().toISOString().slice(0,10) });
+    addItemToBucket('someday', { text: item.text });
   }
-  data.inbox = data.inbox.filter(i => i.id !== id);
+  removeItemById(id);
   save(); render();
 }
 
@@ -4108,14 +4242,14 @@ function addNext() {
   const editId = editingId['next'];
   if (editId) {
     const item = data.next.find(x => x.id === editId);
-    if (item) Object.assign(item, fields);
+    if (item) {
+      Object.assign(item, fields);
+      // Keep tags[] in sync with v1-style context field on edits
+      if (fields.context) item.tags = [fields.context.startsWith('@') ? fields.context : '@' + fields.context];
+      syncBucketViews();
+    }
   } else {
-    data.next.push({
-      id: uid('n'),
-      ...fields,
-      created: new Date().toISOString().slice(0,10),
-      done: false
-    });
+    addItemToBucket('next', fields);
   }
   document.getElementById('next-text').value = '';
   document.getElementById('next-notes').value = '';
@@ -4147,17 +4281,14 @@ function createProjectFromNextForm() {
   if (!title) { document.getElementById('new-project-title-inline').focus(); return; }
   const priority = document.getElementById('new-project-priority-inline').value;
   const outcome = document.getElementById('new-project-outcome-inline').value.trim();
-  const newProj = {
-    id: uid('p'),
-    title,
+  const newProj = addItemToBucket('projects', {
+    text: title,
     outcome: outcome || '',
     areaId: null,
     status: 'active',
     priority,
-    notes: '',
-    created: new Date().toISOString().slice(0, 10)
-  };
-  data.projects.push(newProj);
+    notes: ''
+  });
   // Reset inline form
   document.getElementById('new-project-title-inline').value = '';
   document.getElementById('new-project-outcome-inline').value = '';
@@ -4171,16 +4302,22 @@ function createProjectFromNextForm() {
 function toggleNextDone(id) {
   const n = data.next.find(x => x.id === id);
   if (!n) return;
-  n.done = !n.done;
-  if (n.done) n.completed = new Date().toISOString().slice(0,10);
+  const becomingDone = !n.done;
+  n.status = becomingDone ? 'done' : 'next';
+  if (becomingDone) n.completed = new Date().toISOString().slice(0,10);
+  else n.completed = null;
+  syncBucketViews();
   save(); render();
 }
 
 function toggleCalendarDone(id) {
   const c = data.calendar.find(x => x.id === id);
   if (!c) return;
-  c.done = !c.done;
-  if (c.done) c.completed = new Date().toISOString().slice(0,10);
+  const becomingDone = !c.done;
+  c.status = becomingDone ? 'done' : 'next';
+  if (becomingDone) c.completed = new Date().toISOString().slice(0,10);
+  else c.completed = null;
+  syncBucketViews();
   save(); render();
 }
 
@@ -4221,13 +4358,11 @@ function submitNextToWaiting(id) {
   if (!n) return;
   const inp = document.getElementById('waiting-prompt-input-' + id);
   const who = inp ? inp.value.trim() : '';
-  const newWaitingId = uid('w');
   const sysMsg = makeNoteEntry(
     'Moved from Next Action (#' + n.id + ') to Waiting For — waiting on ' + (who || '(unspecified)'),
     true
   );
-  data.waiting.push({
-    id: newWaitingId,
+  addItemToBucket('waiting', {
     text: n.text,
     who: who,
     since: new Date().toISOString().slice(0,10),
@@ -4235,15 +4370,17 @@ function submitNextToWaiting(id) {
     notes: prependToNotes(n.notes || '', sysMsg),
     // Preserve next-action metadata so it round-trips back if/when the ball comes back
     _origNext: {
-      context: n.context || '@computer',
+      context: n.context || (n.tags && n.tags[0]) || '@computer',
       priority: n.priority || 'med',
       energy: n.energy || '',
       dueDate: n.dueDate || null,
       focusDate: n.focusDate || null
     }
   });
-  n.done = true;
+  // Mark original next action as done (it was converted, not completed)
+  n.status = 'done';
   n.completed = new Date().toISOString().slice(0,10);
+  syncBucketViews();
   waitingPromptForId = null;
   save(); render();
 }
@@ -4409,13 +4546,21 @@ function addProject() {
   const editId = editingId['projects'];
   if (editId) {
     const item = data.projects.find(x => x.id === editId);
-    if (item) Object.assign(item, fields);
+    if (item) {
+      // v1 form fields → v2 names
+      if (fields.title) item.text = fields.title;
+      if (fields.area !== undefined) item.areaId = fields.area || null;
+      if (fields.status) {
+        const map = { completed: 'done', complete: 'done', finished: 'done', cancelled: 'done', archived: 'done' };
+        item.status = map[fields.status] || fields.status;
+      }
+      if (fields.outcome !== undefined) item.outcome = fields.outcome;
+      if (fields.priority !== undefined) item.priority = fields.priority;
+      if (fields.notes !== undefined) item.notes = fields.notes;
+      syncBucketViews();
+    }
   } else {
-    data.projects.push({
-      id: uid('p'),
-      ...fields,
-      created: new Date().toISOString().slice(0,10)
-    });
+    addItemToBucket('projects', fields);
   }
   ['project-title','project-outcome','project-notes'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('project-priority').value = 'med';
@@ -4544,9 +4689,9 @@ function addWaiting() {
   const editId = editingId['waiting'];
   if (editId) {
     const item = data.waiting.find(x => x.id === editId);
-    if (item) Object.assign(item, fields);
+    if (item) { Object.assign(item, fields); syncBucketViews(); }
   } else {
-    data.waiting.push({ id: uid('w'), ...fields });
+    addItemToBucket('waiting', fields);
   }
   ['waiting-text','waiting-who','waiting-since','waiting-notes','waiting-due','waiting-focus'].forEach(id => document.getElementById(id).value = '');
   toggleForm('waiting');
@@ -4612,9 +4757,14 @@ function addCalendar() {
   const editId = editingId['calendar'];
   if (editId) {
     const item = data.calendar.find(x => x.id === editId);
-    if (item) Object.assign(item, fields);
+    if (item) {
+      Object.assign(item, fields);
+      // Calendar form uses 'date'; v2 canonical field is dueDate.
+      if (fields.date) item.dueDate = fields.date;
+      syncBucketViews();
+    }
   } else {
-    data.calendar.push({ id: uid('c'), ...fields });
+    addItemToBucket('calendar', fields);
   }
   ['cal-text','cal-date','cal-notes'].forEach(id => document.getElementById(id).value = '');
   toggleForm('calendar');
@@ -4684,9 +4834,9 @@ function addSomeday() {
   const editId = editingId['someday'];
   if (editId) {
     const item = data.someday.find(x => x.id === editId);
-    if (item) { item.text = text; item.notes = notes; }
+    if (item) { item.text = text; item.notes = notes; syncBucketViews(); }
   } else {
-    data.someday.push({ id: uid('s'), text, notes, created: new Date().toISOString().slice(0,10) });
+    addItemToBucket('someday', { text, notes });
   }
   ['someday-text','someday-notes'].forEach(id => document.getElementById(id).value = '');
   toggleForm('someday');
@@ -4696,8 +4846,8 @@ function addSomeday() {
 function promoteSomeday(id) {
   const s = data.someday.find(x => x.id === id);
   if (!s) return;
-  data.projects.push({ id: uid('p'), title: s.text, outcome: '', area: '', status: 'active', created: new Date().toISOString().slice(0,10) });
-  data.someday = data.someday.filter(x => x.id !== id);
+  addItemToBucket('projects', { text: s.text, outcome: '', areaId: null });
+  removeItemById(id);
   save(); render();
 }
 
@@ -4729,14 +4879,26 @@ function renderAreas() {
 function addArea() {
   const title = document.getElementById('area-title').value.trim();
   if (!title) return;
-  const fields = { title, desc: document.getElementById('area-desc').value.trim() };
+  const desc = document.getElementById('area-desc').value.trim();
+  // Maintain BOTH v2 canonical (name/description) and v1 aliases (title/desc)
+  // so save round-trips correctly and render code keeps working.
+  const fields = { title, desc, name: title, description: desc };
   const editId = editingId['areas'];
   if (editId) {
     const item = data.areas.find(x => x.id === editId);
     if (item) Object.assign(item, fields);
   } else {
-    data.areas.push({ id: uid('a'), ...fields });
+    // Areas use 'a'-prefixed IDs (e.g. a1, a2) per v2 schema; we keep uid('a')
+    // for runtime-created areas to avoid collisions with seeded a1/a2 IDs.
+    data.areas.push({
+      id: uid('a'),
+      ...fields,
+      active: true,
+      targetPct: 0,
+      goals: []
+    });
   }
+  syncBucketViews();
   ['area-title','area-desc'].forEach(id => document.getElementById(id).value = '');
   toggleForm('areas');
   save(); render();
@@ -4923,7 +5085,15 @@ function createAreaFromGoalForm() {
   if (!title) { if(tEl) tEl.focus(); return; }
   const uid='a-'+Math.random().toString(36).slice(2,14);
   if (!data.areas) data.areas=[];
-  data.areas.push({id:uid,title,desc:dEl?dEl.value.trim():'',created:new Date().toISOString().slice(0,10)});
+  const desc = dEl ? dEl.value.trim() : '';
+  data.areas.push({
+    id: uid,
+    title, desc,                       // v1 aliases (render code reads these)
+    name: title, description: desc,    // v2 canonical (saves write these)
+    active: true, targetPct: 0, goals: [],
+    created: new Date().toISOString().slice(0,10)
+  });
+  syncBucketViews();
   if(tEl) tEl.value=''; if(dEl) dEl.value='';
   cancelNewAreaInlineGoal();
   populateGoalAreaChips(document.getElementById('hz-goal-edit-id').value);
@@ -5047,7 +5217,13 @@ function deleteItem(bucket, id) {
   const key = bucket + ':' + id;
   if (deletingKey === key) {
     // Second click — actually delete
-    data[bucket] = data[bucket].filter(x => x.id !== id);
+    if (bucket === 'areas') {
+      // Areas are still a first-class array (not in data.items)
+      data.areas = (data.areas || []).filter(x => x.id !== id);
+      syncBucketViews();
+    } else {
+      removeItemById(id);
+    }
     deletingKey = null;
     if (deletingTimer) { clearTimeout(deletingTimer); deletingTimer = null; }
     save(); render();
@@ -5208,6 +5384,7 @@ function setBootMsg(msg) {
 }
 
 async function bootstrap() {
+  syncBucketViews();
   try {
     // If Drive sync is configured, initDriveOnLoad handles everything — skip FSA bootstrap
     if (localStorage.getItem(STORAGE_KEY + ':gdriveFileId')) {
@@ -5246,7 +5423,8 @@ async function bootstrap() {
       } catch(e) {}
       // Use cloud if newer-or-equal (cloud is canonical when present)
       if (cloudSavedAt >= localSavedAt) {
-        data = { ...clone(DEFAULT_DATA), ...cloudState.data };
+        data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(cloudState.data) };
+        syncBucketViews();
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
           localStorage.setItem(STORAGE_KEY + ':meta', JSON.stringify({ savedAt: cloudSavedAt }));
