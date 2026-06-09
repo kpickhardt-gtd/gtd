@@ -1517,12 +1517,24 @@
     <div class="add-form" id="form-areas">
       <input type="text" id="area-title" placeholder="Area title" />
       <textarea id="area-desc" placeholder="What does success in this area look like?" rows="2"></textarea>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:6px;">
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px;">
+          Target %:
+          <input type="number" id="area-target-pct" min="0" max="100" step="1" value="0" style="width:70px;padding:4px 8px;border:1px solid var(--border-strong);border-radius:5px;" />
+        </label>
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px;">
+          <input type="checkbox" id="area-active" checked />
+          Active
+        </label>
+      </div>
       <div class="form-actions">
         <button class="btn secondary" onclick="toggleForm('areas')">Cancel</button>
         <button class="btn" onclick="addArea()">Add</button>
       </div>
     </div>
 
+    <div id="areas-summary" style="margin-bottom:14px;"></div>
+    <div id="areas-filter-row" style="display:flex;gap:8px;align-items:center;margin-bottom:12px;font-size:13px;"></div>
     <div id="list-areas"></div>
   </section>
 
@@ -5190,20 +5202,112 @@ function clearFocusDate(id) {
 // =================================================================
 // AREAS
 // =================================================================
+let areasShowInactive = false;
+function toggleAreasShowInactive() { areasShowInactive = !areasShowInactive; renderAreas(); }
+
+function toggleAreaActive(id) {
+  const a = data.areas.find(x => x.id === id);
+  if (!a) return;
+  a.active = !(a.active !== false); // treat undefined/true as active
+  save();
+  render();
+  showToast(`Area marked ${a.active ? 'active' : 'inactive'}`);
+}
+
+function setAreaTargetPct(id, pct) {
+  const a = data.areas.find(x => x.id === id);
+  if (!a) return;
+  const n = parseInt(pct, 10);
+  a.targetPct = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
+  save();
+  render();
+}
+
 function renderAreas() {
   const list = document.getElementById('list-areas');
-  if (data.areas.length === 0) {
+  const summaryEl = document.getElementById('areas-summary');
+  const filterEl = document.getElementById('areas-filter-row');
+  if (!list) return;
+
+  const areas = data.areas || [];
+  if (areas.length === 0) {
+    if (summaryEl) summaryEl.innerHTML = '';
+    if (filterEl) filterEl.innerHTML = '';
     list.innerHTML = `<div class="empty-state"><div class="icon">◎</div>No areas defined.</div>`;
     return;
   }
-  list.innerHTML = data.areas.map(a => {
+
+  const activeAreas = areas.filter(a => a.active !== false);
+  const inactiveAreas = areas.filter(a => a.active === false);
+  const activeSum = activeAreas.reduce((s, a) => s + (parseInt(a.targetPct, 10) || 0), 0);
+  const overAllocated = activeSum > 110;
+  const undeAllocated = activeSum < 90;
+  const sumColor = overAllocated ? '#dc2626' : (activeSum > 100 ? '#ea580c' : (activeSum >= 90 ? '#16a34a' : '#6b7280'));
+  const sumBg = overAllocated ? '#fee2e2' : (activeSum > 100 ? '#fff7ed' : (activeSum >= 90 ? '#dcfce7' : '#f3f4f6'));
+
+  // Summary widget
+  if (summaryEl) {
+    summaryEl.innerHTML = `
+      <div style="padding:12px 14px;background:${sumBg};border:1px solid ${sumColor}33;border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:13px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:0.04em;">Attention allocation</div>
+          <div style="font-size:22px;font-weight:700;color:${sumColor};margin-top:2px;">${activeSum}% <span style="font-size:13px;font-weight:500;color:var(--muted);">across ${activeAreas.length} active area${activeAreas.length === 1 ? '' : 's'}</span></div>
+        </div>
+        <div style="text-align:right;font-size:12px;color:${sumColor};font-weight:600;">
+          ${overAllocated ? '⚠ Over-allocated (>110%)' : activeSum > 100 ? 'Slightly over 100%' : activeSum >= 90 ? '✓ Balanced' : undeAllocated && activeSum > 0 ? '— Under-allocated' : 'Set target % on areas to track'}
+        </div>
+      </div>
+    `;
+  }
+
+  // Filter row
+  if (filterEl) {
+    filterEl.innerHTML = `
+      <span class="filter-chip ${!areasShowInactive ? 'on' : ''}" onclick="toggleAreasShowInactive()">${areasShowInactive ? 'Hide' : 'Show'} inactive (${inactiveAreas.length})</span>
+      <span style="color:var(--muted);font-size:12px;">${areasShowInactive ? `Showing all ${areas.length}` : `Showing ${activeAreas.length} active`}</span>
+    `;
+  }
+
+  const visible = areasShowInactive ? areas : activeAreas;
+  if (visible.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">◎</div>No ${areasShowInactive ? '' : 'active '}areas.</div>`;
+    return;
+  }
+
+  // Sort: active first, then by targetPct desc, then alpha
+  const sorted = visible.slice().sort((a, b) => {
+    const aAct = a.active !== false ? 0 : 1;
+    const bAct = b.active !== false ? 0 : 1;
+    if (aAct !== bAct) return aAct - bAct;
+    const ap = parseInt(a.targetPct, 10) || 0;
+    const bp = parseInt(b.targetPct, 10) || 0;
+    if (ap !== bp) return bp - ap;
+    return (a.title || a.name || '').localeCompare(b.title || b.name || '');
+  });
+
+  list.innerHTML = sorted.map(a => {
+    const isActive = a.active !== false;
     const projects = data.projects.filter(p => p.area === a.id);
+    const activeProjects = projects.filter(p => p.status === 'active' || p.status === 'blocked');
+    const pct = parseInt(a.targetPct, 10) || 0;
     return `
-      <details class="area-card">
-        <summary>${escapeHtml(a.title)} <span class="chip" style="margin-left:6px;">${projects.length} project${projects.length === 1 ? '' : 's'}</span></summary>
-        <div class="desc">${escapeHtml(a.desc)}</div>
-        ${projects.length > 0 ? `<div style="margin-top:8px;font-size:12px;"><strong>Linked projects:</strong> ${projects.map(p => escapeHtml(p.title)).join(' · ')}</div>` : ''}
-        <div style="margin-top:10px;display:flex;gap:8px;">
+      <details class="area-card" style="${!isActive ? 'opacity:0.6;' : ''}">
+        <summary style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-weight:600;">${escapeHtml(a.title || a.name || '(untitled)')}</span>
+          ${pct > 0 ? `<span class="chip" style="background:${isActive ? '#dbeafe' : '#f3f4f6'};color:${isActive ? '#1e40af' : '#6b7280'};font-weight:600;">${pct}%</span>` : ''}
+          <span class="chip" style="background:${isActive ? '#dcfce7' : '#f3f4f6'};color:${isActive ? '#166534' : '#6b7280'};">${isActive ? 'active' : 'inactive'}</span>
+          <span class="chip" style="margin-left:auto;">${projects.length} project${projects.length === 1 ? '' : 's'}${projects.length !== activeProjects.length ? ' · ' + activeProjects.length + ' active' : ''}</span>
+        </summary>
+        <div class="desc" style="margin-top:8px;">${escapeHtml(a.desc || a.description || '')}</div>
+        <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;">
+          <label style="display:flex;align-items:center;gap:6px;">
+            Target %:
+            <input type="number" min="0" max="100" step="1" value="${pct}" onchange="setAreaTargetPct('${a.id}', this.value)" style="width:65px;padding:3px 6px;border:1px solid var(--border-strong);border-radius:5px;" />
+          </label>
+        </div>
+        ${projects.length > 0 ? `<div style="margin-top:8px;font-size:12px;"><strong>Linked projects:</strong> ${projects.map(p => `<span class="chip project" style="cursor:pointer;" onclick="focusItem('${p.id}')">${escapeHtml(p.title || p.text)}</span>`).join(' ')}</div>` : '<div style="margin-top:8px;font-size:12px;color:var(--muted);">No linked projects.</div>'}
+        <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn secondary" onclick="toggleAreaActive('${a.id}')">${isActive ? '○ Mark inactive' : '● Mark active'}</button>
           <button class="btn secondary" onclick="startEdit('areas','${a.id}')">✏️ Edit</button>
           <button class="btn danger" onclick="deleteItem('areas','${a.id}')">${isDeleting('areas', a.id) ? '⚠️ Click again' : 'Delete area'}</button>
         </div>
@@ -5216,9 +5320,12 @@ function addArea() {
   const title = document.getElementById('area-title').value.trim();
   if (!title) return;
   const desc = document.getElementById('area-desc').value.trim();
+  const targetPctRaw = parseInt(document.getElementById('area-target-pct')?.value, 10);
+  const targetPct = Number.isFinite(targetPctRaw) ? Math.max(0, Math.min(100, targetPctRaw)) : 0;
+  const active = document.getElementById('area-active')?.checked !== false;
   // Maintain BOTH v2 canonical (name/description) and v1 aliases (title/desc)
   // so save round-trips correctly and render code keeps working.
-  const fields = { title, desc, name: title, description: desc };
+  const fields = { title, desc, name: title, description: desc, targetPct, active };
   const editId = editingId['areas'];
   if (editId) {
     const item = data.areas.find(x => x.id === editId);
@@ -5229,13 +5336,13 @@ function addArea() {
     data.areas.push({
       id: uid('a'),
       ...fields,
-      active: true,
-      targetPct: 0,
       goals: []
     });
   }
   syncBucketViews();
   ['area-title','area-desc'].forEach(id => document.getElementById(id).value = '');
+  const tpEl = document.getElementById('area-target-pct'); if (tpEl) tpEl.value = '0';
+  const acEl = document.getElementById('area-active'); if (acEl) acEl.checked = true;
   toggleForm('areas');
   save(); render();
 }
@@ -5649,8 +5756,12 @@ function populateForm(bucket, item) {
     document.getElementById('someday-text').value = item.text || '';
     document.getElementById('someday-notes').value = item.notes || '';
   } else if (bucket === 'areas') {
-    document.getElementById('area-title').value = item.title || '';
-    document.getElementById('area-desc').value = item.desc || '';
+    document.getElementById('area-title').value = item.title || item.name || '';
+    document.getElementById('area-desc').value = item.desc || item.description || '';
+    const tpEl = document.getElementById('area-target-pct');
+    if (tpEl) tpEl.value = String(item.targetPct || 0);
+    const acEl = document.getElementById('area-active');
+    if (acEl) acEl.checked = item.active !== false;
   } else if (bucket === 'sessionlog') {
     document.getElementById('sessionlog-title').value = item.title || '';
     document.getElementById('sessionlog-body').value = item.body || '';
