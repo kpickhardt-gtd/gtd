@@ -2701,6 +2701,14 @@ async function saveToDrive(force = false) {
     setDataProtected('Save blocked: data looks like defaults. Reload to restore.');
     return false;
   }
+  // Hard stop: never write sample/default data to Drive under ANY circumstances.
+  // force=true is allowed only when data has real content — this catches the phone
+  // reconnect edge case where localStorage was cleared and data is still defaults.
+  if (looksLikeDefaultData(data)) {
+    console.warn('saveToDrive blocked: data appears to be default sample data');
+    setCloudStatus('error', 'Save blocked — app has no real data yet. Reload to pull from Drive.');
+    return false;
+  }
   // Always persist to localStorage so changes survive a token expiry / reconnect
   try {
     const now = new Date().toISOString();
@@ -2812,8 +2820,25 @@ async function connectGoogleDrive() {
         // Drive is current or newer — load it
         data = { ...clone(DEFAULT_DATA), ...driveState.data };
         _persistAndRender(driveState.savedAt);
+      } else if (driveState?.data) {
+        // Local cache is newer — push it up, but ONLY if it's not default sample data
+        if (looksLikeDefaultData(data)) {
+          // Drive loaded real data but local is "newer" defaults — something cleared localStorage.
+          // Trust Drive, not the stale local defaults.
+          data = { ...clone(DEFAULT_DATA), ...driveState.data };
+          _persistAndRender(driveState.savedAt);
+        } else {
+          await saveToDrive(true);
+        }
       } else {
-        // Local cache has newer changes — push them to Drive
+        // Drive load failed entirely — NEVER push defaults to Drive in this case
+        if (looksLikeDefaultData(data)) {
+          setCloudStatus('error', 'Drive load failed — your data is safe in Drive. Reload the page to try again.');
+          driveSyncActive = false;
+          cloudBootstrapped = false;
+          return;
+        }
+        // Local data is real — push it up
         await saveToDrive(true);
       }
       setCloudStatus('synced', 'reconnected');
@@ -2854,7 +2879,19 @@ async function connectGoogleDrive() {
       }
     }
 
-    // No file found — offer copy/blank
+    // No file found in this folder.
+    // Safety: if local data looks like defaults, this device has no real data to offer.
+    // Creating a new file would overwrite another device's real data on the next pull.
+    if (looksLikeDefaultData(data)) {
+      throw new Error(
+        'No task file was found in that folder, and this device has no saved data yet.\n\n' +
+        'If your data already exists in Drive, make sure you are:\n' +
+        '  • Signed in with the same Google account\n' +
+        '  • Selecting the correct folder (Kevin GTD Tasks)\n\n' +
+        'Once the correct folder is selected your data will load automatically.'
+      );
+    }
+
     const choice = await showFolderChoiceDialog(folder.name);
     if (choice === 'cancel') { setCloudStatus(driveSyncActive ? 'synced' : 'no_folder', 'cancelled'); return; }
     if (choice === 'blank') { data = clone(DEFAULT_DATA); render(); }
