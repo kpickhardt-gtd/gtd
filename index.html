@@ -1227,6 +1227,7 @@
     </div>
 
     <input id="search-focus" type="text" placeholder="Search focused items…" oninput="renderFocus()" style="margin-bottom:12px;width:100%;padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;" />
+    <div id="next-form-mount-focus"></div>
     <div id="list-focus"></div>
   </section>
 
@@ -1267,6 +1268,7 @@
 
     <div class="toolbar" id="contextFilters"></div>
 
+    <div id="next-form-mount-next"></div>
     <div class="add-form" id="form-next">
       <input type="text" id="next-text" placeholder="Concrete next physical action" />
       <div class="form-row">
@@ -3578,6 +3580,9 @@ document.querySelectorAll('nav button').forEach(btn => {
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b === btn));
     document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', s.id === 'section-' + tab));
     localStorage.setItem(STORAGE_KEY + ':lastTab', tab);
+    // Keep the shared "next" form visible with the tab if it's open and the
+    // user hops between Next Actions and Focus (both show "next" items).
+    if (tab === 'next' || tab === 'focus') relocateNextForm();
   });
 });
 
@@ -5226,9 +5231,12 @@ function renderFocus() {
           })()
         : '';
       const ctxValue = it.context || (it.tags && it.tags.find(t => typeof t === 'string' && t.startsWith('@'))) || '';
+      const startedDays = it.startedDate ? Math.abs(daysFromToday(it.startedDate)) : null;
+      const isStarted = !!it.startedDate;
+      const isDone = it.status === 'done';
       return `
-        <div class="item ${it.status === 'done' ? 'done' : ''}">
-          <input type="checkbox" ${it.status === 'done' ? 'checked' : ''} onchange="toggleNextDone('${it.id}')" />
+        <div class="item ${isDone ? 'done' : ''} ${isStarted && !isDone ? 'in-progress' : ''}">
+          <input type="checkbox" ${isDone ? 'checked' : ''} onchange="toggleNextDone('${it.id}')" />
           <div class="item-body">
             <div class="item-text">${escapeHtml(it.text || '')}${it.created ? `<span class="age-tag">(${formatAge(it.created)})</span>` : ''}</div>
             <div class="item-meta">
@@ -5240,15 +5248,32 @@ function renderFocus() {
                 <option value="med"  ${(it.priority||'med')==='med' ?'selected':''}>· med</option>
                 <option value="low"  ${(it.priority||'med')==='low' ?'selected':''}>↓ low</option>
               </select>
+              ${isStarted && !isDone ? `<span class="chip in-progress-chip">▶ in progress${startedDays > 0 ? ' · ' + startedDays + 'd' : ''}</span>` : ''}
               ${focusChip}
               ${dueChip}
             </div>
             ${it.notes ? `<div class="item-notes">${linkifyNotes(it.notes)}</div>` : ''}
+            ${addingNoteFor === 'next:' + it.id ? `
+              <div style="margin-top:10px;padding:10px 12px;background:#f9fafb;border:1px solid var(--border-strong);border-radius:6px;">
+                <label style="font-size:12px;color:var(--muted);font-weight:500;">📝 Add note — will be timestamped and prepended</label>
+                <textarea id="add-note-input-next-${it.id}" rows="2" placeholder="Type your note (web links auto-link)…" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))submitAddNote('next','${it.id}');else if(event.key==='Escape')cancelAddNote()" style="width:100%;padding:6px 10px;margin-top:6px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;"></textarea>
+                <div style="display:flex;gap:6px;margin-top:6px;">
+                  <button class="btn" onclick="submitAddNote('next','${it.id}')">Append note</button>
+                  <button class="btn secondary" onclick="cancelAddNote()">Cancel</button>
+                  <span style="font-size:11px;color:var(--muted);align-self:center;margin-left:auto;">Ctrl/Cmd+Enter to save</span>
+                </div>
+              </div>
+            ` : ''}
           </div>
           <div class="item-actions">
             ${renderStatusDropdown(it)}
+            ${!isDone && !isStarted ? `<button class="icon-btn" title="Mark started" onclick="startNext('${it.id}')">▶ Start</button>` : ''}
+            ${!isDone && isStarted ? `<button class="icon-btn" title="Mark not started (clear flag)" onclick="startNext('${it.id}')">↺ Unstart</button>` : ''}
+            ${!isDone ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('next','${it.id}')">📝 Add note</button>` : ''}
             <button class="icon-btn" title="Clear focus date" onclick="clearFocusDate('${it.id}')">🗑 Clear focus</button>
             <button class="icon-btn" title="Edit" onclick="startEdit('next','${it.id}')">✏️ Edit</button>
+            ${!isDone ? `<button class="icon-btn" title="Convert this Next Action into a multi-step Project (preserves all fields)" onclick="convertToProject('${it.id}')">↑ To Project</button>` : ''}
+            <button class="btn danger" onclick="deleteItem('next','${it.id}')">${isDeleting('next', it.id) ? '⚠️ Click again' : 'Delete'}</button>
           </div>
         </div>
       `;
@@ -5758,10 +5783,30 @@ function isDeleting(bucket, id) {
 }
 
 function toggleForm(name) {
+  if (name === 'next') relocateNextForm();
   const f = document.getElementById('form-' + name);
   f.classList.toggle('open');
   editingId[name] = null; // any toggle resets edit state
   updateSaveButtonLabels();
+}
+
+// The "next" bucket's add/edit form is shared between the Next Actions tab
+// and the Focus tab (Focus shows a filtered view of the same items). The
+// form only renders visibly inside whichever <section> currently has the
+// "active" class, so we physically move the form node into the mount point
+// for whichever of those two tabs is currently showing before opening it —
+// otherwise "Edit" from Focus would open a form hidden on the Next Actions tab.
+function relocateNextForm() {
+  const form = document.getElementById('form-next');
+  if (!form) return;
+  const activeSection = document.querySelector('.section.active');
+  const targetMountId = (activeSection && activeSection.id === 'section-focus')
+    ? 'next-form-mount-focus'
+    : 'next-form-mount-next';
+  const mount = document.getElementById(targetMountId);
+  if (mount && form.parentElement !== mount) {
+    mount.appendChild(form);
+  }
 }
 
 // =================================================================
@@ -5775,6 +5820,7 @@ function startEdit(bucket, id) {
   // Reset all editing state, close any open forms
   Object.keys(editingId).forEach(k => { editingId[k] = null; });
   document.querySelectorAll('.add-form.open').forEach(f => f.classList.remove('open'));
+  if (bucket === 'next') relocateNextForm();
   editingId[bucket] = id;
   populateForm(bucket, item);
   const f = document.getElementById('form-' + bucket);
