@@ -3997,7 +3997,8 @@ function prependToNotes(existing, entry) {
 // Additive notes — append timestamped entries to an item's notes field
 let addingNoteFor = null; // "bucket:id"
 
-function startAddNote(bucket, id) {
+function startAddNote(bucket, id, source) {
+  source = source || bucket;
   const key = bucket + ':' + id;
   if (addingNoteFor === key) {
     addingNoteFor = null;
@@ -4007,13 +4008,19 @@ function startAddNote(bucket, id) {
   addingNoteFor = key;
   render();
   setTimeout(() => {
-    const el = document.getElementById('add-note-input-' + bucket + '-' + id);
+    const el = document.getElementById('add-note-input-' + source + '-' + id);
     if (el) el.focus();
   }, 50);
 }
 
-function submitAddNote(bucket, id) {
-  const el = document.getElementById('add-note-input-' + bucket + '-' + id);
+// `source` disambiguates WHICH tab's copy of the textarea to read, for
+// buckets (like "next") that render into more than one tab at once —
+// e.g. Next Actions and Focus both show "next" items, so they'd otherwise
+// both produce an element with the same id and getElementById would
+// silently grab the wrong (possibly empty, hidden) one.
+function submitAddNote(bucket, id, source) {
+  source = source || bucket;
+  const el = document.getElementById('add-note-input-' + source + '-' + id);
   if (!el) return;
   const text = el.value.trim();
   if (!text) { el.focus(); return; }
@@ -4391,9 +4398,9 @@ function renderNext() {
           ${addingNoteFor === 'next:' + n.id ? `
             <div style="margin-top:10px;padding:10px 12px;background:#f9fafb;border:1px solid var(--border-strong);border-radius:6px;">
               <label style="font-size:12px;color:var(--muted);font-weight:500;">📝 Add note — will be timestamped and prepended</label>
-              <textarea id="add-note-input-next-${n.id}" rows="2" placeholder="Type your note (web links auto-link)…" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))submitAddNote('next','${n.id}');else if(event.key==='Escape')cancelAddNote()" style="width:100%;padding:6px 10px;margin-top:6px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;"></textarea>
+              <textarea id="add-note-input-listnext-${n.id}" rows="2" placeholder="Type your note (web links auto-link)…" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))submitAddNote('next','${n.id}','listnext');else if(event.key==='Escape')cancelAddNote()" style="width:100%;padding:6px 10px;margin-top:6px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;"></textarea>
               <div style="display:flex;gap:6px;margin-top:6px;">
-                <button class="btn" onclick="submitAddNote('next','${n.id}')">Append note</button>
+                <button class="btn" onclick="submitAddNote('next','${n.id}','listnext')">Append note</button>
                 <button class="btn secondary" onclick="cancelAddNote()">Cancel</button>
                 <span style="font-size:11px;color:var(--muted);align-self:center;margin-left:auto;">Ctrl/Cmd+Enter to save</span>
               </div>
@@ -4414,7 +4421,7 @@ function renderNext() {
           ${renderStatusDropdown(n)}
           ${!n.done && !isStarted ? `<button class="icon-btn" title="Mark started" onclick="startNext('${n.id}')">▶ Start</button>` : ''}
           ${!n.done && isStarted ? `<button class="icon-btn" title="Mark not started (clear flag)" onclick="startNext('${n.id}')">↺ Unstart</button>` : ''}
-          ${!n.done ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('next','${n.id}')">📝 Add note</button>` : ''}
+          ${!n.done ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('next','${n.id}','listnext')">📝 Add note</button>` : ''}
           <button class="icon-btn" title="Edit" onclick="startEdit('next','${n.id}')">✏️ Edit</button>
           ${!n.done ? `<button class="icon-btn" title="Convert this Next Action into a multi-step Project (preserves all fields)" onclick="convertToProject('${n.id}')">↑ To Project</button>` : ''}
           <button class="btn danger" onclick="deleteItem('next','${n.id}')">${isDeleting('next', n.id) ? '⚠️ Click again' : 'Delete'}</button>
@@ -5256,9 +5263,9 @@ function renderFocus() {
             ${addingNoteFor === 'next:' + it.id ? `
               <div style="margin-top:10px;padding:10px 12px;background:#f9fafb;border:1px solid var(--border-strong);border-radius:6px;">
                 <label style="font-size:12px;color:var(--muted);font-weight:500;">📝 Add note — will be timestamped and prepended</label>
-                <textarea id="add-note-input-next-${it.id}" rows="2" placeholder="Type your note (web links auto-link)…" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))submitAddNote('next','${it.id}');else if(event.key==='Escape')cancelAddNote()" style="width:100%;padding:6px 10px;margin-top:6px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;"></textarea>
+                <textarea id="add-note-input-listfocus-${it.id}" rows="2" placeholder="Type your note (web links auto-link)…" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))submitAddNote('next','${it.id}','listfocus');else if(event.key==='Escape')cancelAddNote()" style="width:100%;padding:6px 10px;margin-top:6px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;"></textarea>
                 <div style="display:flex;gap:6px;margin-top:6px;">
-                  <button class="btn" onclick="submitAddNote('next','${it.id}')">Append note</button>
+                  <button class="btn" onclick="submitAddNote('next','${it.id}','listfocus')">Append note</button>
                   <button class="btn secondary" onclick="cancelAddNote()">Cancel</button>
                   <span style="font-size:11px;color:var(--muted);align-self:center;margin-left:auto;">Ctrl/Cmd+Enter to save</span>
                 </div>
@@ -5269,7 +5276,7 @@ function renderFocus() {
             ${renderStatusDropdown(it)}
             ${!isDone && !isStarted ? `<button class="icon-btn" title="Mark started" onclick="startNext('${it.id}')">▶ Start</button>` : ''}
             ${!isDone && isStarted ? `<button class="icon-btn" title="Mark not started (clear flag)" onclick="startNext('${it.id}')">↺ Unstart</button>` : ''}
-            ${!isDone ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('next','${it.id}')">📝 Add note</button>` : ''}
+            ${!isDone ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('next','${it.id}','listfocus')">📝 Add note</button>` : ''}
             <button class="icon-btn" title="Clear focus date" onclick="clearFocusDate('${it.id}')">🗑 Clear focus</button>
             <button class="icon-btn" title="Edit" onclick="startEdit('next','${it.id}')">✏️ Edit</button>
             ${!isDone ? `<button class="icon-btn" title="Convert this Next Action into a multi-step Project (preserves all fields)" onclick="convertToProject('${it.id}')">↑ To Project</button>` : ''}
