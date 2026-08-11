@@ -1154,6 +1154,7 @@
   <button data-tab="done"><span>Done</span> <span class="count" id="count-done">0</span></button>
   <button data-tab="horizons">Goals &amp; Horizons</button>
   <button data-tab="areas">Areas of Focus</button>
+  <button data-tab="people"><span>People</span> <span class="count" id="count-people">0</span></button>
   <div class="nav-section-label">Reflect</div>
   <button data-tab="sessionlog"><span>Session Log</span> <span class="count" id="count-sessionlog">0</span></button>
   <button data-tab="review">Review</button>
@@ -1227,7 +1228,6 @@
     </div>
 
     <input id="search-focus" type="text" placeholder="Search focused items…" oninput="renderFocus()" style="margin-bottom:12px;width:100%;padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;" />
-    <div id="next-form-mount-focus"></div>
     <div id="list-focus"></div>
   </section>
 
@@ -1268,7 +1268,6 @@
 
     <div class="toolbar" id="contextFilters"></div>
 
-    <div id="next-form-mount-next"></div>
     <div class="add-form" id="form-next">
       <input type="text" id="next-text" placeholder="Concrete next physical action" />
       <div class="form-row">
@@ -1540,6 +1539,19 @@
     <div id="list-areas"></div>
   </section>
 
+  <!-- ========== PEOPLE ========== -->
+  <section class="section" id="section-people">
+    <div class="section-header">
+      <div>
+        <h2 id="people-heading">People</h2>
+        <div class="blurb" id="people-blurb">The individuals you work with across projects, actions, and inbox. Click a name to see everything on your plate involving them.</div>
+      </div>
+      <div id="people-header-actions"></div>
+    </div>
+    <div id="people-filter-row" style="display:flex;gap:8px;align-items:center;margin-bottom:12px;font-size:13px;flex-wrap:wrap;"></div>
+    <div id="list-people"></div>
+  </section>
+
   <section class="section" id="section-horizons">
     <div class="section-header">
       <div>
@@ -1777,11 +1789,25 @@ const STORAGE_KEY = 'kevin-gtd-v1';
 const DEFAULT_DATA = {
   items: [],
   areas: [],
+  people: [],
   nextIdCounters: {},
   reviewState: { daily: {}, weekly: {}, monthly: {} },
   horizons: {},
   sessionlog: []
 };
+
+// People categories (single-select). Order controls display order in People tab.
+const PERSON_CATEGORIES = ['pharos', 'elm-oak', 'vistage', 'vendor', 'family', 'friend', 'other'];
+const PERSON_CATEGORY_LABELS = {
+  'pharos':   'Pharos',
+  'elm-oak':  'Elm & Oak',
+  'vistage':  'Vistage',
+  'vendor':   'Vendor',
+  'family':   'Family',
+  'friend':   'Friend',
+  'other':    'Other'
+};
+const PERSON_CADENCES = ['weekly', 'monthly', 'quarterly', ''];
 
 // Help docs are loaded from help.json at runtime; HELP_DOCS_FALLBACK is used if fetch fails.
 let HELP_DOCS = [];
@@ -2542,6 +2568,7 @@ function _buildV2Payload() {
   return {
     items,
     areas,
+    people:          data.people || [],
     nextIdCounters:  data.nextIdCounters || {},
     reviewState:     data.reviewState || { daily: {}, weekly: {}, monthly: {} },
     horizons:        data.horizons || {},
@@ -3580,9 +3607,6 @@ document.querySelectorAll('nav button').forEach(btn => {
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b === btn));
     document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', s.id === 'section-' + tab));
     localStorage.setItem(STORAGE_KEY + ':lastTab', tab);
-    // Keep the shared "next" form visible with the tab if it's open and the
-    // user hops between Next Actions and Focus (both show "next" items).
-    if (tab === 'next' || tab === 'focus') relocateNextForm();
   });
 });
 
@@ -3649,6 +3673,7 @@ function render() {
   renderDone();
   renderFocus();
   renderAreas();
+  renderPeople();
   renderHorizons();
   renderSessionLog();
   renderReview();
@@ -3677,6 +3702,8 @@ function renderCounts() {
   if (focusEl) focusEl.textContent = (data.items || []).filter(it => it.kind === 'action' && it.status !== 'done' && it.status !== 'someday' && it.focusDate).length;
   const slEl = document.getElementById('count-sessionlog');
   if (slEl) slEl.textContent = (data.sessionlog || []).length;
+  const pplEl = document.getElementById('count-people');
+  if (pplEl) pplEl.textContent = (data.people || []).filter(p => p.active !== false).length;
 }
 
 function renderDashboard() {
@@ -3997,8 +4024,7 @@ function prependToNotes(existing, entry) {
 // Additive notes — append timestamped entries to an item's notes field
 let addingNoteFor = null; // "bucket:id"
 
-function startAddNote(bucket, id, source) {
-  source = source || bucket;
+function startAddNote(bucket, id) {
   const key = bucket + ':' + id;
   if (addingNoteFor === key) {
     addingNoteFor = null;
@@ -4008,19 +4034,13 @@ function startAddNote(bucket, id, source) {
   addingNoteFor = key;
   render();
   setTimeout(() => {
-    const el = document.getElementById('add-note-input-' + source + '-' + id);
+    const el = document.getElementById('add-note-input-' + bucket + '-' + id);
     if (el) el.focus();
   }, 50);
 }
 
-// `source` disambiguates WHICH tab's copy of the textarea to read, for
-// buckets (like "next") that render into more than one tab at once —
-// e.g. Next Actions and Focus both show "next" items, so they'd otherwise
-// both produce an element with the same id and getElementById would
-// silently grab the wrong (possibly empty, hidden) one.
-function submitAddNote(bucket, id, source) {
-  source = source || bucket;
-  const el = document.getElementById('add-note-input-' + source + '-' + id);
+function submitAddNote(bucket, id) {
+  const el = document.getElementById('add-note-input-' + bucket + '-' + id);
   if (!el) return;
   const text = el.value.trim();
   if (!text) { el.focus(); return; }
@@ -4398,9 +4418,9 @@ function renderNext() {
           ${addingNoteFor === 'next:' + n.id ? `
             <div style="margin-top:10px;padding:10px 12px;background:#f9fafb;border:1px solid var(--border-strong);border-radius:6px;">
               <label style="font-size:12px;color:var(--muted);font-weight:500;">📝 Add note — will be timestamped and prepended</label>
-              <textarea id="add-note-input-listnext-${n.id}" rows="2" placeholder="Type your note (web links auto-link)…" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))submitAddNote('next','${n.id}','listnext');else if(event.key==='Escape')cancelAddNote()" style="width:100%;padding:6px 10px;margin-top:6px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;"></textarea>
+              <textarea id="add-note-input-next-${n.id}" rows="2" placeholder="Type your note (web links auto-link)…" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))submitAddNote('next','${n.id}');else if(event.key==='Escape')cancelAddNote()" style="width:100%;padding:6px 10px;margin-top:6px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;"></textarea>
               <div style="display:flex;gap:6px;margin-top:6px;">
-                <button class="btn" onclick="submitAddNote('next','${n.id}','listnext')">Append note</button>
+                <button class="btn" onclick="submitAddNote('next','${n.id}')">Append note</button>
                 <button class="btn secondary" onclick="cancelAddNote()">Cancel</button>
                 <span style="font-size:11px;color:var(--muted);align-self:center;margin-left:auto;">Ctrl/Cmd+Enter to save</span>
               </div>
@@ -4421,7 +4441,7 @@ function renderNext() {
           ${renderStatusDropdown(n)}
           ${!n.done && !isStarted ? `<button class="icon-btn" title="Mark started" onclick="startNext('${n.id}')">▶ Start</button>` : ''}
           ${!n.done && isStarted ? `<button class="icon-btn" title="Mark not started (clear flag)" onclick="startNext('${n.id}')">↺ Unstart</button>` : ''}
-          ${!n.done ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('next','${n.id}','listnext')">📝 Add note</button>` : ''}
+          ${!n.done ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('next','${n.id}')">📝 Add note</button>` : ''}
           <button class="icon-btn" title="Edit" onclick="startEdit('next','${n.id}')">✏️ Edit</button>
           ${!n.done ? `<button class="icon-btn" title="Convert this Next Action into a multi-step Project (preserves all fields)" onclick="convertToProject('${n.id}')">↑ To Project</button>` : ''}
           <button class="btn danger" onclick="deleteItem('next','${n.id}')">${isDeleting('next', n.id) ? '⚠️ Click again' : 'Delete'}</button>
@@ -5238,12 +5258,9 @@ function renderFocus() {
           })()
         : '';
       const ctxValue = it.context || (it.tags && it.tags.find(t => typeof t === 'string' && t.startsWith('@'))) || '';
-      const startedDays = it.startedDate ? Math.abs(daysFromToday(it.startedDate)) : null;
-      const isStarted = !!it.startedDate;
-      const isDone = it.status === 'done';
       return `
-        <div class="item ${isDone ? 'done' : ''} ${isStarted && !isDone ? 'in-progress' : ''}">
-          <input type="checkbox" ${isDone ? 'checked' : ''} onchange="toggleNextDone('${it.id}')" />
+        <div class="item ${it.status === 'done' ? 'done' : ''}">
+          <input type="checkbox" ${it.status === 'done' ? 'checked' : ''} onchange="toggleNextDone('${it.id}')" />
           <div class="item-body">
             <div class="item-text">${escapeHtml(it.text || '')}${it.created ? `<span class="age-tag">(${formatAge(it.created)})</span>` : ''}</div>
             <div class="item-meta">
@@ -5255,32 +5272,15 @@ function renderFocus() {
                 <option value="med"  ${(it.priority||'med')==='med' ?'selected':''}>· med</option>
                 <option value="low"  ${(it.priority||'med')==='low' ?'selected':''}>↓ low</option>
               </select>
-              ${isStarted && !isDone ? `<span class="chip in-progress-chip">▶ in progress${startedDays > 0 ? ' · ' + startedDays + 'd' : ''}</span>` : ''}
               ${focusChip}
               ${dueChip}
             </div>
             ${it.notes ? `<div class="item-notes">${linkifyNotes(it.notes)}</div>` : ''}
-            ${addingNoteFor === 'next:' + it.id ? `
-              <div style="margin-top:10px;padding:10px 12px;background:#f9fafb;border:1px solid var(--border-strong);border-radius:6px;">
-                <label style="font-size:12px;color:var(--muted);font-weight:500;">📝 Add note — will be timestamped and prepended</label>
-                <textarea id="add-note-input-listfocus-${it.id}" rows="2" placeholder="Type your note (web links auto-link)…" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))submitAddNote('next','${it.id}','listfocus');else if(event.key==='Escape')cancelAddNote()" style="width:100%;padding:6px 10px;margin-top:6px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;"></textarea>
-                <div style="display:flex;gap:6px;margin-top:6px;">
-                  <button class="btn" onclick="submitAddNote('next','${it.id}','listfocus')">Append note</button>
-                  <button class="btn secondary" onclick="cancelAddNote()">Cancel</button>
-                  <span style="font-size:11px;color:var(--muted);align-self:center;margin-left:auto;">Ctrl/Cmd+Enter to save</span>
-                </div>
-              </div>
-            ` : ''}
           </div>
           <div class="item-actions">
             ${renderStatusDropdown(it)}
-            ${!isDone && !isStarted ? `<button class="icon-btn" title="Mark started" onclick="startNext('${it.id}')">▶ Start</button>` : ''}
-            ${!isDone && isStarted ? `<button class="icon-btn" title="Mark not started (clear flag)" onclick="startNext('${it.id}')">↺ Unstart</button>` : ''}
-            ${!isDone ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('next','${it.id}','listfocus')">📝 Add note</button>` : ''}
             <button class="icon-btn" title="Clear focus date" onclick="clearFocusDate('${it.id}')">🗑 Clear focus</button>
             <button class="icon-btn" title="Edit" onclick="startEdit('next','${it.id}')">✏️ Edit</button>
-            ${!isDone ? `<button class="icon-btn" title="Convert this Next Action into a multi-step Project (preserves all fields)" onclick="convertToProject('${it.id}')">↑ To Project</button>` : ''}
-            <button class="btn danger" onclick="deleteItem('next','${it.id}')">${isDeleting('next', it.id) ? '⚠️ Click again' : 'Delete'}</button>
           </div>
         </div>
       `;
@@ -5413,6 +5413,178 @@ function renderAreas() {
           <button class="btn danger" onclick="deleteItem('areas','${a.id}')">${isDeleting('areas', a.id) ? '⚠️ Click again' : 'Delete area'}</button>
         </div>
       </details>
+    `;
+  }).join('');
+}
+
+// =================================================================
+// PEOPLE
+// =================================================================
+let peopleSelectedId = null;      // null = list view; set = detail view for that person
+let peopleCategoryFilter = 'all'; // 'all' or one of PERSON_CATEGORIES
+let peopleShowInactive = false;
+let peopleSearch = '';
+
+function setPeopleCategoryFilter(cat) { peopleCategoryFilter = cat; renderPeople(); }
+function togglePeopleShowInactive() { peopleShowInactive = !peopleShowInactive; renderPeople(); }
+function selectPerson(id) { peopleSelectedId = id; renderPeople(); window.scrollTo(0, 0); }
+function clearPersonSelection() { peopleSelectedId = null; renderPeople(); }
+function setPeopleSearch(v) { peopleSearch = (v || '').toLowerCase(); renderPeople(); }
+
+// Return all items where personIds includes the given person id.
+function itemsForPerson(personId) {
+  return (data.items || []).filter(it => Array.isArray(it.personIds) && it.personIds.includes(personId));
+}
+
+// Return the count of OPEN items (not done, not someday) for a person.
+function openItemCountForPerson(personId) {
+  return itemsForPerson(personId).filter(it => it.status !== 'done' && it.status !== 'completed' && it.status !== 'someday').length;
+}
+
+function renderPeople() {
+  const list = document.getElementById('list-people');
+  const filterEl = document.getElementById('people-filter-row');
+  const headingEl = document.getElementById('people-heading');
+  const blurbEl = document.getElementById('people-blurb');
+  const actionsEl = document.getElementById('people-header-actions');
+  if (!list) return;
+
+  const people = data.people || [];
+
+  // -----------------------------------------------------------
+  // DETAIL VIEW — one person's items grouped by kind
+  // -----------------------------------------------------------
+  if (peopleSelectedId) {
+    const person = people.find(p => p.id === peopleSelectedId);
+    if (!person) { peopleSelectedId = null; return renderPeople(); }
+    const items = itemsForPerson(person.id);
+    const buckets = {
+      'Projects':   items.filter(it => it.kind === 'project'  && it.status !== 'done' && it.status !== 'completed'),
+      'Next Actions': items.filter(it => it.kind === 'action' && it.status === 'next'),
+      'Waiting For':  items.filter(it => it.kind === 'action' && it.status === 'waiting'),
+      'Inbox':        items.filter(it => it.kind === 'inbox'),
+      'Someday':      items.filter(it => it.status === 'someday'),
+      'Done':         items.filter(it => it.status === 'done' || it.status === 'completed')
+    };
+    if (headingEl) headingEl.textContent = escapeHtml(person.name);
+    if (blurbEl) {
+      const bits = [];
+      if (person.title) bits.push(escapeHtml(person.title));
+      if (person.org)   bits.push(escapeHtml(person.org));
+      bits.push(escapeHtml(PERSON_CATEGORY_LABELS[person.category] || person.category || 'other'));
+      blurbEl.innerHTML = bits.join(' · ') + (person.email ? ` · <a href="mailto:${escapeHtml(person.email)}" style="color:var(--accent);">${escapeHtml(person.email)}</a>` : '') + (person.phone ? ` · ${escapeHtml(person.phone)}` : '');
+    }
+    if (actionsEl) actionsEl.innerHTML = `<button class="btn secondary" onclick="clearPersonSelection()">← Back to People</button>`;
+    if (filterEl) filterEl.innerHTML = '';
+
+    const bucketHtml = Object.entries(buckets).filter(([_, arr]) => arr.length > 0).map(([label, arr]) => `
+      <details open style="margin-bottom:14px;">
+        <summary style="font-weight:600;font-size:14px;cursor:pointer;padding:6px 0;">${label} <span class="chip" style="margin-left:6px;">${arr.length}</span></summary>
+        <div style="padding-left:8px;margin-top:6px;">
+          ${arr.map(it => `
+            <div class="item" style="padding:8px 12px;margin-bottom:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);cursor:pointer;" onclick="focusItem('${it.id}')">
+              <div style="font-size:13px;color:var(--text);">${escapeHtml(it.text || '(untitled)')}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:3px;">
+                <span class="chip id">#${it.id}</span>
+                ${it.kind ? `<span style="margin-left:6px;">${it.kind}</span>` : ''}
+                ${it.status ? `<span style="margin-left:6px;">· ${it.status}</span>` : ''}
+                ${it.dueDate ? `<span style="margin-left:6px;">· due ${escapeHtml(it.dueDate)}</span>` : ''}
+                ${it.focusDate ? `<span style="margin-left:6px;">· focus ${escapeHtml(it.focusDate)}</span>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </details>
+    `).join('');
+
+    list.innerHTML = `
+      <div style="padding:14px;background:var(--primary-soft,#eef2ff);border:1px solid var(--border);border-radius:8px;margin-bottom:16px;display:flex;gap:16px;flex-wrap:wrap;">
+        <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">Open items</div><div style="font-size:22px;font-weight:700;">${openItemCountForPerson(person.id)}</div></div>
+        <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">Total items</div><div style="font-size:22px;font-weight:700;">${items.length}</div></div>
+        <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">Cadence</div><div style="font-size:14px;font-weight:600;margin-top:6px;">${escapeHtml(person.cadence || '—')}</div></div>
+        <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">Status</div><div style="font-size:14px;font-weight:600;margin-top:6px;color:${person.active === false ? '#6b7280' : '#166534'};">${person.active === false ? 'inactive' : 'active'}</div></div>
+      </div>
+      ${items.length === 0 ? `<div class="empty-state"><div class="icon">◎</div>No items yet reference ${escapeHtml(person.name)}. Add them via Person picker on inbox/action forms (Phase 3).</div>` : bucketHtml}
+      ${person.notes ? `<div style="margin-top:16px;padding:10px 12px;background:var(--surface-alt,#f9fafb);border-left:3px solid var(--accent);font-size:13px;color:var(--muted);"><strong style="color:var(--text);">Notes:</strong> ${escapeHtml(person.notes)}</div>` : ''}
+    `;
+    return;
+  }
+
+  // -----------------------------------------------------------
+  // LIST VIEW — grouped by category
+  // -----------------------------------------------------------
+  if (headingEl) headingEl.textContent = 'People';
+  if (blurbEl) blurbEl.textContent = 'The individuals you work with across projects, actions, and inbox. Click a name to see everything on your plate involving them.';
+  if (actionsEl) actionsEl.innerHTML = '';
+
+  if (people.length === 0) {
+    if (filterEl) filterEl.innerHTML = '';
+    list.innerHTML = `<div class="empty-state"><div class="icon">◎</div>No people yet. Phase 1 migration adds them.</div>`;
+    return;
+  }
+
+  // Filter row
+  const activeCount = people.filter(p => p.active !== false).length;
+  const inactiveCount = people.length - activeCount;
+  if (filterEl) {
+    const chip = (val, label, count) => `<span class="filter-chip ${peopleCategoryFilter === val ? 'on' : ''}" onclick="setPeopleCategoryFilter('${val}')">${label}${count != null ? ` (${count})` : ''}</span>`;
+    const catCounts = {};
+    PERSON_CATEGORIES.forEach(c => { catCounts[c] = people.filter(p => (p.category || 'other') === c && (peopleShowInactive || p.active !== false)).length; });
+    filterEl.innerHTML = `
+      <input type="text" placeholder="🔍 Search people..." value="${escapeHtml(peopleSearch)}" oninput="setPeopleSearch(this.value)" style="padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;background:var(--surface);color:var(--text);width:200px;" />
+      ${chip('all', 'All', peopleShowInactive ? people.length : activeCount)}
+      ${PERSON_CATEGORIES.map(c => chip(c, PERSON_CATEGORY_LABELS[c], catCounts[c])).join('')}
+      <span style="margin-left:auto;"></span>
+      <span class="filter-chip ${peopleShowInactive ? 'on' : ''}" onclick="togglePeopleShowInactive()">${peopleShowInactive ? 'Hiding' : 'Show'} inactive (${inactiveCount})</span>
+    `;
+  }
+
+  const term = peopleSearch;
+  let visible = people.filter(p => peopleShowInactive || p.active !== false);
+  if (peopleCategoryFilter !== 'all') visible = visible.filter(p => (p.category || 'other') === peopleCategoryFilter);
+  if (term) visible = visible.filter(p =>
+    (p.name || '').toLowerCase().includes(term) ||
+    (p.org || '').toLowerCase().includes(term) ||
+    (p.title || '').toLowerCase().includes(term) ||
+    (p.email || '').toLowerCase().includes(term)
+  );
+
+  if (visible.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">◎</div>No people match.</div>`;
+    return;
+  }
+
+  // Group by category
+  const groups = {};
+  PERSON_CATEGORIES.forEach(c => { groups[c] = []; });
+  visible.forEach(p => {
+    const c = PERSON_CATEGORIES.includes(p.category) ? p.category : 'other';
+    groups[c].push(p);
+  });
+
+  list.innerHTML = PERSON_CATEGORIES.filter(c => groups[c].length > 0).map(c => {
+    const sorted = groups[c].slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    return `
+      <div style="margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px;">${PERSON_CATEGORY_LABELS[c]} · ${sorted.length}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;">
+          ${sorted.map(p => {
+            const open = openItemCountForPerson(p.id);
+            const total = itemsForPerson(p.id).length;
+            const isInactive = p.active === false;
+            return `
+              <div class="person-card" onclick="selectPerson('${p.id}')" style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;transition:box-shadow .15s ease, transform .15s ease;${isInactive ? 'opacity:0.55;' : ''}" onmouseover="this.style.boxShadow='0 2px 6px rgba(0,0,0,0.08)'" onmouseout="this.style.boxShadow='none'">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+                  <div style="font-weight:600;font-size:14px;">${escapeHtml(p.name)}</div>
+                  <div style="font-size:11px;color:var(--muted);white-space:nowrap;">${open > 0 ? `<strong style="color:var(--accent);">${open}</strong> open` : '—'}${total > open ? ` · ${total} total` : ''}</div>
+                </div>
+                <div style="font-size:12px;color:var(--muted);margin-top:2px;">${escapeHtml(p.title || '')}${p.title && p.org ? ' · ' : ''}${escapeHtml(p.org || '')}</div>
+                ${p.cadence ? `<div style="margin-top:4px;"><span class="chip" style="font-size:10px;">${escapeHtml(p.cadence)}</span></div>` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
     `;
   }).join('');
 }
@@ -5790,30 +5962,10 @@ function isDeleting(bucket, id) {
 }
 
 function toggleForm(name) {
-  if (name === 'next') relocateNextForm();
   const f = document.getElementById('form-' + name);
   f.classList.toggle('open');
   editingId[name] = null; // any toggle resets edit state
   updateSaveButtonLabels();
-}
-
-// The "next" bucket's add/edit form is shared between the Next Actions tab
-// and the Focus tab (Focus shows a filtered view of the same items). The
-// form only renders visibly inside whichever <section> currently has the
-// "active" class, so we physically move the form node into the mount point
-// for whichever of those two tabs is currently showing before opening it —
-// otherwise "Edit" from Focus would open a form hidden on the Next Actions tab.
-function relocateNextForm() {
-  const form = document.getElementById('form-next');
-  if (!form) return;
-  const activeSection = document.querySelector('.section.active');
-  const targetMountId = (activeSection && activeSection.id === 'section-focus')
-    ? 'next-form-mount-focus'
-    : 'next-form-mount-next';
-  const mount = document.getElementById(targetMountId);
-  if (mount && form.parentElement !== mount) {
-    mount.appendChild(form);
-  }
 }
 
 // =================================================================
@@ -5827,7 +5979,6 @@ function startEdit(bucket, id) {
   // Reset all editing state, close any open forms
   Object.keys(editingId).forEach(k => { editingId[k] = null; });
   document.querySelectorAll('.add-form.open').forEach(f => f.classList.remove('open'));
-  if (bucket === 'next') relocateNextForm();
   editingId[bucket] = id;
   populateForm(bucket, item);
   const f = document.getElementById('form-' + bucket);
