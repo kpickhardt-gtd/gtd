@@ -1489,9 +1489,9 @@
 
     <div class="add-form" id="form-waiting">
       <input type="text" id="waiting-text" placeholder="What you're waiting for" />
+      <input type="hidden" id="waiting-who" value="" />
       <div class="form-row">
-        <input type="text" id="waiting-who" placeholder="Who" />
-        <input type="date" id="waiting-since" />
+        <input type="date" id="waiting-since" title="Waiting since" />
       </div>
       <select id="waiting-project">
         <option value="">— Linked project (optional) —</option>
@@ -5006,7 +5006,7 @@ function renderWaiting() {
           ${renderItemPersonLine(w)}
           <div class="item-meta">
             <span class="chip id">#${escapeHtml(w.id)}</span>
-            ${w.who ? `<span class="chip">👤 ${escapeHtml(w.who)}</span>` : ''}
+            ${w.who && !(Array.isArray(w.personIds) && w.personIds.length > 0) ? `<span class="chip" title="Legacy free-text (pre-People roster) — edit and use the People picker to replace">👤 ${escapeHtml(w.who)}</span>` : ''}
             ${!w.resolved && days !== null ? `<span class="chip ${days > 7 ? 'priority-high' : ''}">${days}d waiting</span>` : ''}
             ${w.resolved ? `<span class="chip status-someday">resolved ${resolvedAge} ago</span>` : ''}
             ${proj ? `<span class="chip project">↳ ${escapeHtml(proj.title)} <span style="opacity:0.7">(${proj.id})</span></span>` : ''}
