@@ -207,7 +207,7 @@
     border-color: var(--primary);
   }
   /* People table */
-  .person-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .person-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
   .person-table thead th {
     text-align: left;
     padding: 8px 8px;
@@ -220,9 +220,25 @@
     cursor: pointer;
     user-select: none;
     white-space: nowrap;
-    position: sticky;
+    position: relative;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .person-table thead th .col-resize {
+    position: absolute;
     top: 0;
-    z-index: 2;
+    right: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    user-select: none;
+    z-index: 3;
+    background: transparent;
+  }
+  .person-table thead th .col-resize:hover,
+  .person-table thead th .col-resize.resizing {
+    background: var(--accent);
+    opacity: 0.35;
   }
   .person-table thead th:hover { background: var(--primary-soft, #eef2ff); color: var(--accent); }
   .person-table thead th .sort-arrow { color: var(--accent); margin-left: 3px; font-weight: 700; }
@@ -5470,6 +5486,80 @@ let peopleShowInactive = false;
 let peopleSearch = '';
 let peopleSortKey = 'category';   // default sort
 let peopleSortDir = 'asc';        // 'asc' | 'desc'
+let peopleColWidths = null;       // lazy-loaded from localStorage
+
+const PEOPLE_COL_DEFAULTS = {
+  name:     190,
+  title:    150,
+  org:      150,
+  category: 110,
+  cadence:  100,
+  email:    200,
+  active:   70,
+  open:     60,
+  total:    60,
+  actions:  70
+};
+
+function loadPeopleColWidths() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY + ':peopleColWidths');
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return {};
+}
+function savePeopleColWidths() {
+  try { localStorage.setItem(STORAGE_KEY + ':peopleColWidths', JSON.stringify(peopleColWidths || {})); } catch(e) {}
+}
+function getPeopleColWidth(key) {
+  if (!peopleColWidths) peopleColWidths = loadPeopleColWidths();
+  return peopleColWidths[key] || PEOPLE_COL_DEFAULTS[key] || 100;
+}
+function setPeopleColWidth(key, w) {
+  if (!peopleColWidths) peopleColWidths = loadPeopleColWidths();
+  peopleColWidths[key] = Math.max(50, Math.round(w));
+  savePeopleColWidths();
+}
+
+// Wire up drag-to-resize on all person-table column headers with data-col-key.
+function initPersonTableResize() {
+  const table = document.querySelector('#list-people .person-table');
+  if (!table) return;
+  table.querySelectorAll('th[data-col-key]').forEach(th => {
+    const key = th.dataset.colKey;
+    const handle = th.querySelector('.col-resize');
+    if (!handle) return;
+    // Suppress sort when clicking the handle
+    handle.addEventListener('click', (e) => e.stopPropagation());
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handle.classList.add('resizing');
+      const startX = e.clientX;
+      const startW = th.offsetWidth;
+      const onMove = (ev) => {
+        const dx = ev.clientX - startX;
+        const newW = Math.max(50, startW + dx);
+        th.style.width = newW + 'px';
+      };
+      const onUp = () => {
+        handle.classList.remove('resizing');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        setPeopleColWidth(key, th.offsetWidth);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
+
+function resetPeopleColWidths() {
+  peopleColWidths = {};
+  savePeopleColWidths();
+  renderPeople();
+  showToast('Column widths reset');
+}
 
 function setPeopleCategoryFilter(cat) { peopleCategoryFilter = cat; renderPeople(); }
 function togglePeopleShowInactive() { peopleShowInactive = !peopleShowInactive; renderPeople(); }
@@ -5686,7 +5776,10 @@ function renderPeople() {
   }
 
   const arrow = k => peopleSortKey === k ? `<span class="sort-arrow">${peopleSortDir === 'asc' ? '▲' : '▼'}</span>` : '';
-  const th = (k, label, extra) => `<th onclick="setPeopleSort('${k}')"${extra ? ' ' + extra : ''}>${label}${arrow(k)}</th>`;
+  const th = (k, label) => {
+    const w = getPeopleColWidth(k);
+    return `<th data-col-key="${k}" style="width:${w}px;" onclick="setPeopleSort('${k}')">${label}${arrow(k)}<span class="col-resize"></span></th>`;
+  };
 
   const cellInput = (p, field, type) => `<input type="${type || 'text'}" class="person-cell-input" data-person-id="${p.id}" data-field="${field}" value="${escapeHtml(p[field] || '')}" onchange="updatePersonField('${p.id}', '${field}', this.value)" />`;
   const cellSelect = (p, field, options) => `<select class="person-cell-select" data-person-id="${p.id}" data-field="${field}" onchange="updatePersonField('${p.id}', '${field}', this.value)">${options.map(o => `<option value="${escapeHtml(o.v)}" ${(p[field] || '') === o.v ? 'selected' : ''}>${escapeHtml(o.l)}</option>`).join('')}</select>`;
@@ -5705,16 +5798,16 @@ function renderPeople() {
     const isInactive = p.active === false;
     return `
       <tr class="${isInactive ? 'inactive' : ''}" data-person-row="${p.id}">
-        <td style="width:19%;">${cellInput(p, 'name')}</td>
-        <td style="width:15%;">${cellInput(p, 'title')}</td>
-        <td style="width:15%;">${cellInput(p, 'org')}</td>
-        <td style="width:9%;">${cellSelect(p, 'category', categoryOpts)}</td>
-        <td style="width:9%;">${cellSelect(p, 'cadence', cadenceOpts)}</td>
-        <td style="width:18%;">${cellInput(p, 'email', 'email')}</td>
-        <td style="width:5%;text-align:center;"><input type="checkbox" ${p.active !== false ? 'checked' : ''} onchange="togglePersonActive('${p.id}', this.checked)" /></td>
-        <td class="numeric" style="width:4%;">${open > 0 ? `<span class="open-strong">${open}</span>` : '—'}</td>
-        <td class="numeric" style="width:4%;">${total || '—'}</td>
-        <td class="actions" style="width:2%;"><button class="person-mini-btn" title="Open detail" onclick="selectPerson('${p.id}')">→</button><button class="person-mini-btn danger" title="Delete" onclick="deletePerson('${p.id}')">×</button></td>
+        <td>${cellInput(p, 'name')}</td>
+        <td>${cellInput(p, 'title')}</td>
+        <td>${cellInput(p, 'org')}</td>
+        <td>${cellSelect(p, 'category', categoryOpts)}</td>
+        <td>${cellSelect(p, 'cadence', cadenceOpts)}</td>
+        <td>${cellInput(p, 'email', 'email')}</td>
+        <td style="text-align:center;"><input type="checkbox" ${p.active !== false ? 'checked' : ''} onchange="togglePersonActive('${p.id}', this.checked)" /></td>
+        <td class="numeric">${open > 0 ? `<span class="open-strong">${open}</span>` : '—'}</td>
+        <td class="numeric">${total || '—'}</td>
+        <td class="actions"><button class="person-mini-btn" title="Open detail" onclick="selectPerson('${p.id}')">→</button><button class="person-mini-btn danger" title="Delete" onclick="deletePerson('${p.id}')">×</button></td>
       </tr>
     `;
   }).join('');
@@ -5733,14 +5826,18 @@ function renderPeople() {
             ${th('active', 'Active')}
             ${th('open', 'Open')}
             ${th('total', 'Total')}
-            <th style="cursor:default;"></th>
+            <th style="cursor:default;width:${getPeopleColWidth('actions')}px;"></th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <div style="margin-top:10px;font-size:12px;color:var(--muted);">Showing ${visible.length} of ${people.length}. Click a cell to edit; click ▲/▼ headers to sort; click → to see items; × to delete.</div>
+    <div style="margin-top:10px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span>Showing ${visible.length} of ${people.length}. Click a cell to edit · click ▲/▼ headers to sort · drag the right edge of a column to resize · click → to see items · × to delete.</span>
+      <button class="person-mini-btn" onclick="resetPeopleColWidths()">Reset column widths</button>
+    </div>
   `;
+  initPersonTableResize();
 }
 
 function addArea() {
