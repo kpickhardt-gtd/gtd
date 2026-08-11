@@ -266,6 +266,20 @@
   .person-mini-btn { background: transparent; border: 1px solid transparent; padding: 4px 8px; border-radius: 5px; cursor: pointer; font-size: 12px; color: var(--muted); }
   .person-mini-btn:hover { color: var(--accent); border-color: var(--border-strong); background: var(--surface); }
   .person-mini-btn.danger:hover { color: #dc2626; border-color: #fecaca; background: #fef2f2; }
+  /* Person picker (used on item forms) */
+  .person-picker-wrapper { margin: 8px 0; }
+  .person-picker-wrapper > label { font-size: 12px; font-weight: 500; color: var(--muted); display: block; margin-bottom: 4px; }
+  .person-picker { position: relative; display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; min-height: 34px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); align-items: center; }
+  .person-picker .picker-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; background: var(--primary-soft, #eef2ff); color: var(--accent, #2563eb); border-radius: 12px; font-size: 12px; font-weight: 500; }
+  .person-picker .picker-chip .chip-remove { cursor: pointer; font-size: 14px; line-height: 1; opacity: 0.6; padding: 0 4px; }
+  .person-picker .picker-chip .chip-remove:hover { opacity: 1; color: #dc2626; }
+  .person-picker .picker-add { background: transparent; border: 1px dashed var(--border-strong); color: var(--muted); padding: 3px 10px; border-radius: 12px; cursor: pointer; font-size: 12px; }
+  .person-picker .picker-add:hover { border-color: var(--accent); color: var(--accent); }
+  .person-picker .picker-dropdown { position: absolute; top: 100%; left: 0; right: 0; z-index: 10; max-height: 300px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); padding: 6px; margin-top: 4px; }
+  .person-picker .picker-search { width: 100%; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 5px; font-size: 13px; margin-bottom: 4px; box-sizing: border-box; }
+  .person-picker .picker-option { padding: 6px 10px; cursor: pointer; border-radius: 5px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .person-picker .picker-option:hover { background: var(--primary-soft, #eef2ff); }
+  .person-picker .picker-option .picker-option-meta { font-size: 11px; color: var(--muted); text-align: right; white-space: nowrap; }
   button.btn {
     background: var(--primary);
     color: #fff;
@@ -1303,6 +1317,10 @@
 
     <div class="add-form" id="form-inbox">
       <input type="text" id="inbox-text" placeholder="What's on your mind?" />
+      <div class="person-picker-wrapper">
+        <label>People (optional)</label>
+        <div class="person-picker" data-picker="inbox" data-selected="[]"></div>
+      </div>
       <div class="form-actions">
         <button class="btn secondary" onclick="toggleForm('inbox')">Cancel</button>
         <button class="btn" onclick="addInbox()">Add to Inbox</button>
@@ -1383,6 +1401,10 @@
         <input type="date" id="next-focus" title="Focus date (optional) — set to today to make this appear in 'Today's focus' on the Dashboard" placeholder="Focus date" />
       </div>
       <textarea id="next-notes" placeholder="Notes, links, context (optional) — paste URLs to documents and they'll auto-link" rows="2"></textarea>
+      <div class="person-picker-wrapper">
+        <label>People (optional)</label>
+        <div class="person-picker" data-picker="next" data-selected="[]"></div>
+      </div>
       <div class="form-actions">
         <button class="btn secondary" onclick="toggleForm('next')">Cancel</button>
         <button class="btn" onclick="addNext()">Add</button>
@@ -1429,6 +1451,10 @@
         <option value="low">Priority: Low</option>
       </select>
       <textarea id="project-notes" placeholder="Notes, links, context (optional)" rows="2"></textarea>
+      <div class="person-picker-wrapper">
+        <label>People (optional) — actions on this project can inherit these later</label>
+        <div class="person-picker" data-picker="projects" data-selected="[]"></div>
+      </div>
       <div class="form-actions">
         <button class="btn secondary" onclick="toggleForm('projects')">Cancel</button>
         <button class="btn" onclick="addProject()">Add</button>
@@ -1489,6 +1515,10 @@
           <input type="date" id="waiting-due" title="Due date (optional)" />
         </div>
         <input type="date" id="waiting-focus" title="Focus date (optional)" placeholder="Focus date" />
+      </div>
+      <div class="person-picker-wrapper">
+        <label>People (waited on)</label>
+        <div class="person-picker" data-picker="waiting" data-selected="[]"></div>
       </div>
       <div class="form-actions">
         <button class="btn secondary" onclick="toggleForm('waiting')">Cancel</button>
@@ -2450,7 +2480,8 @@ function addItemToBucket(bucket, fields) {
     who: ks.kind === 'action' && bucket === 'waiting' ? (f.who || '') : (f.who || null),
     since: ks.kind === 'action' && bucket === 'waiting' ? (f.since || today) : (f.since || null),
     energy: f.energy || null,
-    history: f.history || []
+    history: f.history || [],
+    personIds: Array.isArray(f.personIds) ? f.personIds : []
   };
   if (ks.status !== undefined) item.status = ks.status;
   if (f._origNext) item._origNext = f._origNext;
@@ -3734,6 +3765,10 @@ function render() {
   renderFocus();
   renderAreas();
   renderPeople();
+  ['inbox','next','projects','waiting'].forEach(b => {
+    const el = document.querySelector(`.person-picker[data-picker="${b}"]`);
+    if (el && !el.querySelector('.picker-add')) renderPersonPicker(b);
+  });
   renderHorizons();
   renderSessionLog();
   renderReview();
@@ -4320,14 +4355,16 @@ function quickCapture() {
 function addInbox() {
   const text = document.getElementById('inbox-text').value.trim();
   if (!text) return;
+  const personIds = getPickerIds('inbox');
   const editId = editingId['inbox'];
   if (editId) {
     const item = data.inbox.find(x => x.id === editId);
-    if (item) { item.text = text; syncBucketViews(); }
+    if (item) { item.text = text; item.personIds = personIds; syncBucketViews(); }
   } else {
-    addItemToBucket('inbox', { text, captured: new Date().toISOString().slice(0,10) });
+    addItemToBucket('inbox', { text, personIds, captured: new Date().toISOString().slice(0,10) });
   }
   document.getElementById('inbox-text').value = '';
+  initPersonPicker('inbox', []);
   toggleForm('inbox');
   save(); render();
 }
@@ -4541,7 +4578,8 @@ function addNext() {
     energy: document.getElementById('next-energy').value,
     dueDate: document.getElementById('next-due').value || null,
     focusDate: document.getElementById('next-focus').value || null,
-    notes: document.getElementById('next-notes').value.trim()
+    notes: document.getElementById('next-notes').value.trim(),
+    personIds: getPickerIds('next')
   };
   const editId = editingId['next'];
   if (editId) {
@@ -4559,6 +4597,7 @@ function addNext() {
   document.getElementById('next-notes').value = '';
   document.getElementById('next-due').value = '';
   document.getElementById('next-focus').value = '';
+  initPersonPicker('next', []);
   toggleForm('next');
   save(); render();
 }
@@ -4846,13 +4885,15 @@ function setDashStalledFilter(val) { dashStalledFilter = val; renderDashboard();
 function addProject() {
   const title = document.getElementById('project-title').value.trim();
   if (!title) return;
+  const personIds = getPickerIds('projects');
   const fields = {
     title,
     outcome: document.getElementById('project-outcome').value.trim(),
     area: document.getElementById('project-area').value,
     status: document.getElementById('project-status').value,
     priority: document.getElementById('project-priority').value || 'med',
-    notes: document.getElementById('project-notes').value.trim()
+    notes: document.getElementById('project-notes').value.trim(),
+    personIds
   };
   const editId = editingId['projects'];
   if (editId) {
@@ -4868,6 +4909,7 @@ function addProject() {
       if (fields.outcome !== undefined) item.outcome = fields.outcome;
       if (fields.priority !== undefined) item.priority = fields.priority;
       if (fields.notes !== undefined) item.notes = fields.notes;
+      item.personIds = personIds;
       syncBucketViews();
     }
   } else {
@@ -4875,6 +4917,7 @@ function addProject() {
   }
   ['project-title','project-outcome','project-notes'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('project-priority').value = 'med';
+  initPersonPicker('projects', []);
   toggleForm('projects');
   save(); render();
 }
@@ -4983,12 +5026,14 @@ function toggleWaitingResolved(show) {
 function addWaiting() {
   const text = document.getElementById('waiting-text').value.trim();
   if (!text) return;
+  const personIds = getPickerIds('waiting');
   const fields = {
     text,
     who: document.getElementById('waiting-who').value.trim(),
     since: document.getElementById('waiting-since').value || new Date().toISOString().slice(0,10),
     projectId: document.getElementById('waiting-project').value || null,
     notes: document.getElementById('waiting-notes').value.trim(),
+    personIds,
     _origNext: {
       context: document.getElementById('waiting-context').value || '@computer',
       priority: document.getElementById('waiting-priority').value || 'med',
@@ -5000,11 +5045,12 @@ function addWaiting() {
   const editId = editingId['waiting'];
   if (editId) {
     const item = data.waiting.find(x => x.id === editId);
-    if (item) { Object.assign(item, fields); syncBucketViews(); }
+    if (item) { Object.assign(item, fields); item.personIds = personIds; syncBucketViews(); }
   } else {
     addItemToBucket('waiting', fields);
   }
   ['waiting-text','waiting-who','waiting-since','waiting-notes','waiting-due','waiting-focus'].forEach(id => document.getElementById(id).value = '');
+  initPersonPicker('waiting', []);
   toggleForm('waiting');
   save(); render();
 }
@@ -5642,6 +5688,120 @@ function deletePerson(id) {
   showToast('Person deleted');
 }
 
+// =================================================================
+// PERSON PICKER (reusable widget for item forms)
+// =================================================================
+// Each picker lives in <div class="person-picker" data-picker="<bucket>"
+//   data-selected='["p-001","p-003"]'>. Selected IDs are the source of truth
+// on the DOM node; forms read them at submit via getPickerIds(bucket).
+
+function getPickerIds(bucket) {
+  const el = document.querySelector(`.person-picker[data-picker="${bucket}"]`);
+  if (!el) return [];
+  try { return JSON.parse(el.dataset.selected || '[]'); } catch(e) { return []; }
+}
+function setPickerIds(bucket, ids) {
+  const el = document.querySelector(`.person-picker[data-picker="${bucket}"]`);
+  if (!el) return;
+  el.dataset.selected = JSON.stringify(ids || []);
+  renderPersonPicker(bucket);
+}
+function personPickerAdd(bucket, id) {
+  const ids = getPickerIds(bucket);
+  if (!ids.includes(id)) ids.push(id);
+  setPickerIds(bucket, ids);
+  hidePersonPickerDropdown(bucket);
+}
+function personPickerRemove(bucket, id) {
+  const ids = getPickerIds(bucket).filter(x => x !== id);
+  setPickerIds(bucket, ids);
+}
+function togglePersonPickerDropdown(bucket) {
+  const el = document.querySelector(`.person-picker[data-picker="${bucket}"] .picker-dropdown`);
+  if (el) { el.remove(); return; }
+  showPersonPickerDropdown(bucket);
+}
+function showPersonPickerDropdown(bucket) {
+  hidePersonPickerDropdown(bucket);
+  const container = document.querySelector(`.person-picker[data-picker="${bucket}"]`);
+  if (!container) return;
+  const dropdown = document.createElement('div');
+  dropdown.className = 'picker-dropdown';
+  dropdown.innerHTML = `
+    <input type="text" class="picker-search" placeholder="Search people..." oninput="filterPersonPickerDropdown('${bucket}', this.value)" />
+    <div class="picker-options"></div>
+  `;
+  container.appendChild(dropdown);
+  dropdown.querySelector('.picker-search').focus();
+  filterPersonPickerDropdown(bucket, '');
+  // Click-outside to close
+  setTimeout(() => {
+    document.addEventListener('click', function outside(e) {
+      if (!container.contains(e.target)) {
+        hidePersonPickerDropdown(bucket);
+        document.removeEventListener('click', outside);
+      }
+    });
+  }, 0);
+}
+function hidePersonPickerDropdown(bucket) {
+  const el = document.querySelector(`.person-picker[data-picker="${bucket}"] .picker-dropdown`);
+  if (el) el.remove();
+}
+function filterPersonPickerDropdown(bucket, term) {
+  const list = document.querySelector(`.person-picker[data-picker="${bucket}"] .picker-options`);
+  if (!list) return;
+  const selected = new Set(getPickerIds(bucket));
+  const t = (term || '').toLowerCase();
+  const candidates = (data.people || [])
+    .filter(p => p.active !== false)
+    .filter(p => !selected.has(p.id))
+    .filter(p => !t ||
+      (p.name || '').toLowerCase().includes(t) ||
+      (p.org || '').toLowerCase().includes(t) ||
+      (p.title || '').toLowerCase().includes(t))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    .slice(0, 30);
+  if (candidates.length === 0) {
+    list.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--muted);">No matches. Add new people in the People tab.</div>`;
+    return;
+  }
+  list.innerHTML = candidates.map(p => `
+    <div class="picker-option" onclick="personPickerAdd('${bucket}', '${p.id}')">
+      <span>${escapeHtml(p.name)}</span>
+      <span class="picker-option-meta">${escapeHtml(p.title || '')}${p.title && p.org ? ' · ' : ''}${escapeHtml(p.org || '')}</span>
+    </div>
+  `).join('');
+}
+function renderPersonPicker(bucket) {
+  const container = document.querySelector(`.person-picker[data-picker="${bucket}"]`);
+  if (!container) return;
+  const ids = getPickerIds(bucket);
+  const chips = ids.map(id => {
+    const p = (data.people || []).find(x => x.id === id);
+    const name = p ? p.name : id;
+    const tooltip = p ? [p.title, p.org].filter(Boolean).join(' · ') : id;
+    return `
+      <span class="picker-chip" title="${escapeHtml(tooltip)}">
+        ${escapeHtml(name || '(unnamed)')}
+        <span class="chip-remove" onclick="event.stopPropagation();personPickerRemove('${bucket}', '${id}')">×</span>
+      </span>
+    `;
+  }).join('');
+  // Preserve open dropdown across re-renders (chip add/remove)
+  const openDropdown = container.querySelector('.picker-dropdown');
+  container.innerHTML = chips + `<button type="button" class="picker-add" onclick="event.stopPropagation();togglePersonPickerDropdown('${bucket}')">+ Add person</button>`;
+  if (openDropdown) container.appendChild(openDropdown);
+}
+
+// Call from populateForm() during edit, or from form-toggle for a fresh add.
+function initPersonPicker(bucket, ids) {
+  const el = document.querySelector(`.person-picker[data-picker="${bucket}"]`);
+  if (!el) return;
+  el.dataset.selected = JSON.stringify(Array.isArray(ids) ? ids : []);
+  renderPersonPicker(bucket);
+}
+
 // Return all items where personIds includes the given person id.
 function itemsForPerson(personId) {
   return (data.items || []).filter(it => Array.isArray(it.personIds) && it.personIds.includes(personId));
@@ -6243,6 +6403,7 @@ function startEdit(bucket, id) {
 function populateForm(bucket, item) {
   if (bucket === 'inbox') {
     document.getElementById('inbox-text').value = item.text || '';
+    initPersonPicker('inbox', item.personIds || []);
   } else if (bucket === 'next') {
     document.getElementById('next-text').value = item.text || '';
     document.getElementById('next-context').value = item.context || '@computer';
@@ -6252,6 +6413,7 @@ function populateForm(bucket, item) {
     document.getElementById('next-due').value = item.dueDate || '';
     document.getElementById('next-focus').value = item.focusDate || '';
     document.getElementById('next-notes').value = item.notes || '';
+    initPersonPicker('next', item.personIds || []);
   } else if (bucket === 'projects') {
     document.getElementById('project-title').value = item.title || '';
     document.getElementById('project-outcome').value = item.outcome || '';
@@ -6259,6 +6421,7 @@ function populateForm(bucket, item) {
     document.getElementById('project-status').value = item.status || 'active';
     document.getElementById('project-priority').value = item.priority || 'med';
     document.getElementById('project-notes').value = item.notes || '';
+    initPersonPicker('projects', item.personIds || []);
   } else if (bucket === 'waiting') {
     document.getElementById('waiting-text').value = item.text || '';
     document.getElementById('waiting-who').value = item.who || '';
@@ -6271,6 +6434,7 @@ function populateForm(bucket, item) {
     document.getElementById('waiting-energy').value = orig.energy || '';
     document.getElementById('waiting-due').value = orig.dueDate || '';
     document.getElementById('waiting-focus').value = orig.focusDate || '';
+    initPersonPicker('waiting', item.personIds || []);
   } else if (bucket === 'calendar') {
     document.getElementById('cal-text').value = item.text || '';
     document.getElementById('cal-date').value = item.date || '';
