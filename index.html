@@ -206,6 +206,50 @@
     color: #fff;
     border-color: var(--primary);
   }
+  /* People table */
+  .person-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .person-table thead th {
+    text-align: left;
+    padding: 8px 8px;
+    background: var(--surface-alt, #f9fafb);
+    border-bottom: 2px solid var(--border-strong);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+  .person-table thead th:hover { background: var(--primary-soft, #eef2ff); color: var(--accent); }
+  .person-table thead th .sort-arrow { color: var(--accent); margin-left: 3px; font-weight: 700; }
+  .person-table tbody tr { border-bottom: 1px solid var(--border); }
+  .person-table tbody tr:hover { background: var(--primary-soft, #eef2ff); }
+  .person-table tbody tr.inactive { opacity: 0.55; }
+  .person-table td { padding: 3px 4px; vertical-align: middle; }
+  .person-table td.numeric { text-align: right; font-variant-numeric: tabular-nums; padding-right: 12px; color: var(--muted); }
+  .person-table td.numeric .open-strong { color: var(--accent); font-weight: 700; }
+  .person-table td.actions { white-space: nowrap; text-align: right; }
+  .person-cell-input, .person-cell-select {
+    width: 100%;
+    padding: 5px 7px;
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 5px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text);
+    box-sizing: border-box;
+  }
+  .person-cell-input:hover, .person-cell-select:hover { border-color: var(--border-strong); background: var(--surface); }
+  .person-cell-input:focus, .person-cell-select:focus { border-color: var(--accent); background: var(--surface); outline: none; box-shadow: 0 0 0 2px rgba(37,99,235,0.12); }
+  .person-cell-select { appearance: none; padding-right: 22px; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: right 8px top 12px, right 4px top 12px; background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; }
+  .person-mini-btn { background: transparent; border: 1px solid transparent; padding: 4px 8px; border-radius: 5px; cursor: pointer; font-size: 12px; color: var(--muted); }
+  .person-mini-btn:hover { color: var(--accent); border-color: var(--border-strong); background: var(--surface); }
+  .person-mini-btn.danger:hover { color: #dc2626; border-color: #fecaca; background: #fef2f2; }
   button.btn {
     background: var(--primary);
     color: #fff;
@@ -5424,12 +5468,89 @@ let peopleSelectedId = null;      // null = list view; set = detail view for tha
 let peopleCategoryFilter = 'all'; // 'all' or one of PERSON_CATEGORIES
 let peopleShowInactive = false;
 let peopleSearch = '';
+let peopleSortKey = 'category';   // default sort
+let peopleSortDir = 'asc';        // 'asc' | 'desc'
 
 function setPeopleCategoryFilter(cat) { peopleCategoryFilter = cat; renderPeople(); }
 function togglePeopleShowInactive() { peopleShowInactive = !peopleShowInactive; renderPeople(); }
 function selectPerson(id) { peopleSelectedId = id; renderPeople(); window.scrollTo(0, 0); }
 function clearPersonSelection() { peopleSelectedId = null; renderPeople(); }
 function setPeopleSearch(v) { peopleSearch = (v || '').toLowerCase(); renderPeople(); }
+function setPeopleSort(key) {
+  if (peopleSortKey === key) peopleSortDir = peopleSortDir === 'asc' ? 'desc' : 'asc';
+  else { peopleSortKey = key; peopleSortDir = 'asc'; }
+  renderPeople();
+}
+
+function personSortValue(p, key) {
+  switch (key) {
+    case 'category': return String(PERSON_CATEGORIES.indexOf(p.category || 'other')).padStart(3, '0');
+    case 'cadence':  return String(PERSON_CADENCES.indexOf(p.cadence || '')).padStart(3, '0');
+    case 'active':   return p.active === false ? 1 : 0;
+    case 'open':     return openItemCountForPerson(p.id);
+    case 'total':    return itemsForPerson(p.id).length;
+    default:         return (p[key] || '').toString().toLowerCase();
+  }
+}
+
+// Compute next person id: p-NNN with zero-padded incrementing number.
+function nextPersonId() {
+  const nums = (data.people || []).map(p => {
+    const m = /^p-(\d+)$/.exec(p.id || '');
+    return m ? parseInt(m[1], 10) : 0;
+  });
+  const max = nums.length ? Math.max(...nums) : 0;
+  return 'p-' + String(max + 1).padStart(3, '0');
+}
+
+function addPerson() {
+  if (!data.people) data.people = [];
+  const p = {
+    id: nextPersonId(),
+    name: '', email: '', phone: '', title: '', org: '',
+    category: 'other', active: true, cadence: '',
+    lastInteraction: null, notes: ''
+  };
+  data.people.push(p);
+  save();
+  render();
+  showToast(`Added ${p.id} — fill in the name`);
+  setTimeout(() => {
+    const el = document.querySelector(`input[data-person-id="${p.id}"][data-field="name"]`);
+    if (el) { el.focus(); el.select && el.select(); }
+  }, 100);
+}
+
+function updatePersonField(id, field, value) {
+  const p = (data.people || []).find(x => x.id === id);
+  if (!p) return;
+  if (field === 'active') p[field] = !!value;
+  else p[field] = value;
+  save();
+  // Re-render row counts / sort if a sortable field changed; otherwise light update.
+  render();
+}
+
+function togglePersonActive(id, checked) { updatePersonField(id, 'active', !!checked); }
+
+function deletePerson(id) {
+  const p = (data.people || []).find(x => x.id === id);
+  if (!p) return;
+  const linked = itemsForPerson(id).length;
+  const msg = linked > 0
+    ? `Delete "${p.name || p.id}"? ${linked} item(s) reference this person and will lose the link. This can't be undone.`
+    : `Delete "${p.name || p.id}"?`;
+  if (!confirm(msg)) return;
+  (data.items || []).forEach(it => {
+    if (Array.isArray(it.personIds) && it.personIds.includes(id)) {
+      it.personIds = it.personIds.filter(pid => pid !== id);
+    }
+  });
+  data.people = (data.people || []).filter(x => x.id !== id);
+  save();
+  render();
+  showToast('Person deleted');
+}
 
 // Return all items where personIds includes the given person id.
 function itemsForPerson(personId) {
@@ -5511,19 +5632,13 @@ function renderPeople() {
   }
 
   // -----------------------------------------------------------
-  // LIST VIEW — grouped by category
+  // LIST VIEW — sortable editable table
   // -----------------------------------------------------------
   if (headingEl) headingEl.textContent = 'People';
-  if (blurbEl) blurbEl.textContent = 'The individuals you work with across projects, actions, and inbox. Click a name to see everything on your plate involving them.';
-  if (actionsEl) actionsEl.innerHTML = '';
+  if (blurbEl) blurbEl.textContent = 'The individuals you work with. Click column headers to sort. Click any cell to edit. Click the → icon to see all items involving that person.';
+  if (actionsEl) actionsEl.innerHTML = `<button class="btn" onclick="addPerson()">+ Add Person</button>`;
 
-  if (people.length === 0) {
-    if (filterEl) filterEl.innerHTML = '';
-    list.innerHTML = `<div class="empty-state"><div class="icon">◎</div>No people yet. Phase 1 migration adds them.</div>`;
-    return;
-  }
-
-  // Filter row
+  // Filter row (with search + category chips + show-inactive)
   const activeCount = people.filter(p => p.active !== false).length;
   const inactiveCount = people.length - activeCount;
   if (filterEl) {
@@ -5531,12 +5646,17 @@ function renderPeople() {
     const catCounts = {};
     PERSON_CATEGORIES.forEach(c => { catCounts[c] = people.filter(p => (p.category || 'other') === c && (peopleShowInactive || p.active !== false)).length; });
     filterEl.innerHTML = `
-      <input type="text" placeholder="🔍 Search people..." value="${escapeHtml(peopleSearch)}" oninput="setPeopleSearch(this.value)" style="padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;background:var(--surface);color:var(--text);width:200px;" />
+      <input type="text" placeholder="🔍 Search..." value="${escapeHtml(peopleSearch)}" oninput="setPeopleSearch(this.value)" style="padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;background:var(--surface);color:var(--text);width:180px;" />
       ${chip('all', 'All', peopleShowInactive ? people.length : activeCount)}
       ${PERSON_CATEGORIES.map(c => chip(c, PERSON_CATEGORY_LABELS[c], catCounts[c])).join('')}
       <span style="margin-left:auto;"></span>
       <span class="filter-chip ${peopleShowInactive ? 'on' : ''}" onclick="togglePeopleShowInactive()">${peopleShowInactive ? 'Hiding' : 'Show'} inactive (${inactiveCount})</span>
     `;
+  }
+
+  if (people.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">◎</div>No people yet. Click <strong>+ Add Person</strong> above to add one.</div>`;
+    return;
   }
 
   const term = peopleSearch;
@@ -5549,44 +5669,78 @@ function renderPeople() {
     (p.email || '').toLowerCase().includes(term)
   );
 
+  // Sort
+  const dir = peopleSortDir === 'asc' ? 1 : -1;
+  visible = visible.slice().sort((a, b) => {
+    const av = personSortValue(a, peopleSortKey);
+    const bv = personSortValue(b, peopleSortKey);
+    if (av < bv) return -1 * dir;
+    if (av > bv) return  1 * dir;
+    // tiebreaker: name asc
+    return (a.name || '').localeCompare(b.name || '');
+  });
+
   if (visible.length === 0) {
     list.innerHTML = `<div class="empty-state"><div class="icon">◎</div>No people match.</div>`;
     return;
   }
 
-  // Group by category
-  const groups = {};
-  PERSON_CATEGORIES.forEach(c => { groups[c] = []; });
-  visible.forEach(p => {
-    const c = PERSON_CATEGORIES.includes(p.category) ? p.category : 'other';
-    groups[c].push(p);
-  });
+  const arrow = k => peopleSortKey === k ? `<span class="sort-arrow">${peopleSortDir === 'asc' ? '▲' : '▼'}</span>` : '';
+  const th = (k, label, extra) => `<th onclick="setPeopleSort('${k}')"${extra ? ' ' + extra : ''}>${label}${arrow(k)}</th>`;
 
-  list.innerHTML = PERSON_CATEGORIES.filter(c => groups[c].length > 0).map(c => {
-    const sorted = groups[c].slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const cellInput = (p, field, type) => `<input type="${type || 'text'}" class="person-cell-input" data-person-id="${p.id}" data-field="${field}" value="${escapeHtml(p[field] || '')}" onchange="updatePersonField('${p.id}', '${field}', this.value)" />`;
+  const cellSelect = (p, field, options) => `<select class="person-cell-select" data-person-id="${p.id}" data-field="${field}" onchange="updatePersonField('${p.id}', '${field}', this.value)">${options.map(o => `<option value="${escapeHtml(o.v)}" ${(p[field] || '') === o.v ? 'selected' : ''}>${escapeHtml(o.l)}</option>`).join('')}</select>`;
+
+  const categoryOpts = PERSON_CATEGORIES.map(c => ({ v: c, l: PERSON_CATEGORY_LABELS[c] }));
+  const cadenceOpts = [
+    { v: '',          l: '—' },
+    { v: 'weekly',    l: 'weekly' },
+    { v: 'monthly',   l: 'monthly' },
+    { v: 'quarterly', l: 'quarterly' }
+  ];
+
+  const rows = visible.map(p => {
+    const open = openItemCountForPerson(p.id);
+    const total = itemsForPerson(p.id).length;
+    const isInactive = p.active === false;
     return `
-      <div style="margin-bottom:20px;">
-        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px;">${PERSON_CATEGORY_LABELS[c]} · ${sorted.length}</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;">
-          ${sorted.map(p => {
-            const open = openItemCountForPerson(p.id);
-            const total = itemsForPerson(p.id).length;
-            const isInactive = p.active === false;
-            return `
-              <div class="person-card" onclick="selectPerson('${p.id}')" style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;transition:box-shadow .15s ease, transform .15s ease;${isInactive ? 'opacity:0.55;' : ''}" onmouseover="this.style.boxShadow='0 2px 6px rgba(0,0,0,0.08)'" onmouseout="this.style.boxShadow='none'">
-                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
-                  <div style="font-weight:600;font-size:14px;">${escapeHtml(p.name)}</div>
-                  <div style="font-size:11px;color:var(--muted);white-space:nowrap;">${open > 0 ? `<strong style="color:var(--accent);">${open}</strong> open` : '—'}${total > open ? ` · ${total} total` : ''}</div>
-                </div>
-                <div style="font-size:12px;color:var(--muted);margin-top:2px;">${escapeHtml(p.title || '')}${p.title && p.org ? ' · ' : ''}${escapeHtml(p.org || '')}</div>
-                ${p.cadence ? `<div style="margin-top:4px;"><span class="chip" style="font-size:10px;">${escapeHtml(p.cadence)}</span></div>` : ''}
-              </div>
-            `;
-          }).join('')}
-        </div>
-      </div>
+      <tr class="${isInactive ? 'inactive' : ''}" data-person-row="${p.id}">
+        <td style="width:19%;">${cellInput(p, 'name')}</td>
+        <td style="width:15%;">${cellInput(p, 'title')}</td>
+        <td style="width:15%;">${cellInput(p, 'org')}</td>
+        <td style="width:9%;">${cellSelect(p, 'category', categoryOpts)}</td>
+        <td style="width:9%;">${cellSelect(p, 'cadence', cadenceOpts)}</td>
+        <td style="width:18%;">${cellInput(p, 'email', 'email')}</td>
+        <td style="width:5%;text-align:center;"><input type="checkbox" ${p.active !== false ? 'checked' : ''} onchange="togglePersonActive('${p.id}', this.checked)" /></td>
+        <td class="numeric" style="width:4%;">${open > 0 ? `<span class="open-strong">${open}</span>` : '—'}</td>
+        <td class="numeric" style="width:4%;">${total || '—'}</td>
+        <td class="actions" style="width:2%;"><button class="person-mini-btn" title="Open detail" onclick="selectPerson('${p.id}')">→</button><button class="person-mini-btn danger" title="Delete" onclick="deletePerson('${p.id}')">×</button></td>
+      </tr>
     `;
   }).join('');
+
+  list.innerHTML = `
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:var(--surface);">
+      <table class="person-table">
+        <thead>
+          <tr>
+            ${th('name', 'Name')}
+            ${th('title', 'Title')}
+            ${th('org', 'Org')}
+            ${th('category', 'Category')}
+            ${th('cadence', 'Cadence')}
+            ${th('email', 'Email')}
+            ${th('active', 'Active')}
+            ${th('open', 'Open')}
+            ${th('total', 'Total')}
+            <th style="cursor:default;"></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:10px;font-size:12px;color:var(--muted);">Showing ${visible.length} of ${people.length}. Click a cell to edit; click ▲/▼ headers to sort; click → to see items; × to delete.</div>
+  `;
 }
 
 function addArea() {
