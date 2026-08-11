@@ -5807,7 +5807,7 @@ function filterPersonPickerDropdown(bucket, term) {
   `).join('');
   if (raw && !exactMatch) {
     html += `
-      <div class="picker-option" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:8px;color:var(--accent);" onclick="createAndAddPersonToPicker('${bucket}', ${JSON.stringify(raw).replace(/"/g,'&quot;')})">
+      <div class="picker-option" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:8px;color:var(--accent);" data-new-name="${escapeHtml(raw)}" onclick="createAndAddPersonToPicker('${bucket}', this.dataset.newName)">
         <span>+ Add "${escapeHtml(raw)}" as new person</span>
         <span class="picker-option-meta">creates in People tab</span>
       </div>
@@ -5930,7 +5930,7 @@ function filterInlineItemPickerOptions(term) {
   `).join('');
   if (raw && !exactMatch) {
     html += `
-      <div class="picker-opt" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:8px;color:var(--accent);" onclick="createAndAddPersonToItem(${JSON.stringify(raw).replace(/"/g,'&quot;')})">
+      <div class="picker-opt" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:8px;color:var(--accent);" data-new-name="${escapeHtml(raw)}" onclick="createAndAddPersonToItem(this.dataset.newName)">
         <span>+ Add "${escapeHtml(raw)}" as new person</span>
         <span class="meta">creates in People tab</span>
       </div>
