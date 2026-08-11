@@ -4350,7 +4350,8 @@ function renderInbox() {
         <button class="icon-btn" title="Add person" onclick="openItemPersonPicker('${i.id}', this)">👤 + Person</button>
         <button class="icon-btn" title="Edit" onclick="startEdit('inbox','${i.id}')">✏️</button>
         <button class="icon-btn" title="Send to Next Actions" onclick="processInbox('${i.id}','next')">→ Next</button>
-        <button class="icon-btn" title="Make a Project" onclick="processInbox('${i.id}','project')">→ Project</button>
+        <button class="icon-btn" title="Assign as a Next Action under an existing project" onclick="openInboxProjectPicker('${i.id}', this)">→ Under project…</button>
+        <button class="icon-btn" title="Make a new Project" onclick="processInbox('${i.id}','project')">→ New project</button>
         <button class="icon-btn" title="Someday/Maybe" onclick="processInbox('${i.id}','someday')">→ Someday</button>
         <button class="btn danger" onclick="deleteItem('inbox','${i.id}')">${isDeleting('inbox', i.id) ? '⚠️ Click again' : 'Delete'}</button>
       </div>
@@ -6062,6 +6063,97 @@ function personChipLabel(id) {
   if (!id) return '👤 Person';
   const p = (data.people || []).find(x => x.id === id);
   return `👤 ${escapeHtml((p && p.name) || id)} ×`;
+}
+
+// -----------------------------------------------------------------
+// Inbox → Under project picker
+// -----------------------------------------------------------------
+let _inboxProjectPickerFor = null; // { inboxId }
+
+function openInboxProjectPicker(inboxId, buttonEl) {
+  closeInboxProjectPicker();
+  _inboxProjectPickerFor = { inboxId };
+  const dropdown = document.createElement('div');
+  dropdown.id = 'inbox-project-picker';
+  dropdown.style.cssText = 'position:absolute;z-index:1000;background:var(--surface);border:1px solid var(--border-strong);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,0.14);padding:6px;width:320px;max-height:340px;overflow-y:auto;';
+  dropdown.innerHTML = `
+    <input type="text" class="picker-search" placeholder="Search active projects..." oninput="filterInboxProjectOptions(this.value)" />
+    <div id="inbox-project-picker-options"></div>
+  `;
+  document.body.appendChild(dropdown);
+  const rect = buttonEl.getBoundingClientRect();
+  dropdown.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+  dropdown.style.left = Math.max(8, Math.min(rect.left + window.scrollX, window.scrollX + window.innerWidth - 328)) + 'px';
+  dropdown.querySelector('input').focus();
+  filterInboxProjectOptions('');
+  setTimeout(() => {
+    document.addEventListener('click', function outside(e) {
+      const d = document.getElementById('inbox-project-picker');
+      if (!d) { document.removeEventListener('click', outside); return; }
+      if (!d.contains(e.target)) { closeInboxProjectPicker(); document.removeEventListener('click', outside); }
+    });
+  }, 0);
+}
+
+function closeInboxProjectPicker() {
+  const el = document.getElementById('inbox-project-picker');
+  if (el) el.remove();
+  _inboxProjectPickerFor = null;
+}
+
+function filterInboxProjectOptions(term) {
+  const list = document.getElementById('inbox-project-picker-options');
+  if (!list) return;
+  const t = (term || '').toLowerCase();
+  const prio = { high: 0, med: 1, low: 2 };
+  const projects = (data.projects || [])
+    .filter(p => p.status === 'active' || p.status === 'blocked')
+    .filter(p => !t ||
+      (p.title || p.text || '').toLowerCase().includes(t) ||
+      (p.id || '').toLowerCase().includes(t))
+    .sort((a, b) => {
+      const ap = prio[a.priority || 'med'];
+      const bp = prio[b.priority || 'med'];
+      if (ap !== bp) return ap - bp;
+      return (a.title || a.text || '').localeCompare(b.title || b.text || '');
+    })
+    .slice(0, 40);
+  if (projects.length === 0) {
+    list.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--muted);">No active projects match. Use <strong>→ New project</strong> to make one.</div>`;
+    return;
+  }
+  list.innerHTML = projects.map(p => {
+    const area = p.areaId ? (data.areas || []).find(a => a.id === p.areaId) : null;
+    const prioLabel = (p.priority || 'med') === 'high' ? '↑' : (p.priority || 'med') === 'low' ? '↓' : '·';
+    return `
+      <div class="picker-opt" onclick="assignInboxToProject('${p.id}')">
+        <span><span style="color:var(--muted);margin-right:6px;">${prioLabel}</span>${escapeHtml(p.title || p.text || '(untitled)')}</span>
+        <span class="meta">${area ? escapeHtml((area.title || area.name || '').split(' ').slice(0,2).join(' ')) + ' · ' : ''}${p.status}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function assignInboxToProject(projectId) {
+  if (!_inboxProjectPickerFor) return;
+  const inboxId = _inboxProjectPickerFor.inboxId;
+  closeInboxProjectPicker();
+  const item = (data.items || []).find(x => x.id === inboxId && x.kind === 'inbox');
+  if (!item) return;
+  const proj = (data.items || []).find(x => x.id === projectId && x.kind === 'project');
+  // Create a Next Action linked to the chosen project. Carry personIds forward — the
+  // action will additionally inherit the project's personIds via effectivePersonIds().
+  addItemToBucket('next', {
+    text: item.text,
+    context: '@computer',
+    priority: 'med',
+    projectId,
+    personIds: Array.isArray(item.personIds) ? item.personIds.slice() : []
+  });
+  removeItemById(inboxId);
+  save();
+  render();
+  showToast(`Added as Next Action under "${(proj && (proj.title || proj.text)) || 'project'}"`);
 }
 
 // Renders inline "person-tag" chips for display under item text.
