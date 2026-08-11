@@ -5798,6 +5798,7 @@ function renderPeople() {
     const isInactive = p.active === false;
     return `
       <tr class="${isInactive ? 'inactive' : ''}" data-person-row="${p.id}">
+        <td class="actions"><button class="person-mini-btn" title="Open detail" onclick="selectPerson('${p.id}')">→</button><button class="person-mini-btn danger" title="Delete" onclick="deletePerson('${p.id}')">×</button></td>
         <td>${cellInput(p, 'name')}</td>
         <td>${cellInput(p, 'title')}</td>
         <td>${cellInput(p, 'org')}</td>
@@ -5807,7 +5808,6 @@ function renderPeople() {
         <td style="text-align:center;"><input type="checkbox" ${p.active !== false ? 'checked' : ''} onchange="togglePersonActive('${p.id}', this.checked)" /></td>
         <td class="numeric">${open > 0 ? `<span class="open-strong">${open}</span>` : '—'}</td>
         <td class="numeric">${total || '—'}</td>
-        <td class="actions"><button class="person-mini-btn" title="Open detail" onclick="selectPerson('${p.id}')">→</button><button class="person-mini-btn danger" title="Delete" onclick="deletePerson('${p.id}')">×</button></td>
       </tr>
     `;
   }).join('');
@@ -5817,6 +5817,7 @@ function renderPeople() {
       <table class="person-table">
         <thead>
           <tr>
+            <th style="cursor:default;width:${getPeopleColWidth('actions')}px;"></th>
             ${th('name', 'Name')}
             ${th('title', 'Title')}
             ${th('org', 'Org')}
@@ -5826,7 +5827,6 @@ function renderPeople() {
             ${th('active', 'Active')}
             ${th('open', 'Open')}
             ${th('total', 'Total')}
-            <th style="cursor:default;width:${getPeopleColWidth('actions')}px;"></th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
