@@ -4399,7 +4399,9 @@ function processInbox(id, where) {
 // =================================================================
 // NEXT ACTIONS
 // =================================================================
-let nextFilters = { context: null, project: null, priority: null, showDone: false, sortBy: 'priority' };
+let nextFilters = { context: null, project: null, priority: null, showDone: false, sortBy: 'priority', personId: null };
+function setNextPersonFilter(id) { nextFilters.personId = id; renderNext(); }
+function openNextPersonFilter(el) { openPersonFilterDropdown(el, setNextPersonFilter); }
 
 function renderNext() {
   const list = document.getElementById('list-next');
@@ -4419,11 +4421,13 @@ function renderNext() {
     <span class="filter-chip ${nextFilters.sortBy === 'date' ? 'on' : ''}" onclick="setNextSort('date')">Sort: due date</span>
     <span class="filter-chip ${nextFilters.sortBy === 'focus' ? 'on' : ''}" onclick="setNextSort('focus')">Sort: today's focus</span>
     <span class="filter-chip ${nextFilters.showDone ? 'on' : ''}" onclick="toggleShowDone()">Show completed</span>
+    <span class="filter-chip ${nextFilters.personId ? 'on' : ''}" onclick="event.stopPropagation(); nextFilters.personId ? setNextPersonFilter(null) : openNextPersonFilter(this)">${personChipLabel(nextFilters.personId)}</span>
   `;
 
   let items = data.next.slice();
   if (nextFilters.context) items = items.filter(n => n.context === nextFilters.context);
   if (nextFilters.priority) items = items.filter(n => n.priority === nextFilters.priority);
+  if (nextFilters.personId) items = items.filter(n => (n.personIds || []).includes(nextFilters.personId));
   if (!nextFilters.showDone) items = items.filter(n => !n.done);
   const nextQ = (document.getElementById('search-next')?.value || '').toLowerCase().trim();
   if (nextQ) items = items.filter(n =>
@@ -4754,6 +4758,9 @@ function cancelNextToWaiting() {
 let areaFilter = null;
 let stalledFilter = null;
 let dashStalledFilter = null;
+let projectPersonFilter = null;
+function setProjectPersonFilter(id) { projectPersonFilter = id; renderProjects(); }
+function openProjectPersonFilter(el) { openPersonFilterDropdown(el, setProjectPersonFilter); }
 
 function renderProjects() {
   const completedCount = data.projects.filter(p => p.status === 'done' || p.status === 'completed').length;
@@ -4764,6 +4771,7 @@ function renderProjects() {
     <span class="filter-chip ${areaFilter === null ? 'on' : ''}" onclick="setAreaFilter(null)">All areas</span>
     ${data.areas.map(a => `<span class="filter-chip ${areaFilter === a.id ? 'on' : ''}" onclick="setAreaFilter('${a.id}')">${escapeHtml(a.title.split(' ').slice(0,3).join(' '))}</span>`).join('')}
     <span style="flex:1"></span>
+    <span class="filter-chip ${projectPersonFilter ? 'on' : ''}" onclick="event.stopPropagation(); projectPersonFilter ? setProjectPersonFilter(null) : openProjectPersonFilter(this)">${personChipLabel(projectPersonFilter)}</span>
     <span class="filter-chip ${projectsShowCompleted ? 'on' : ''}" onclick="toggleProjectsShowCompleted()">${projectsShowCompleted ? 'Hide' : 'Show'} completed (${completedCount})</span>
   `;
 
@@ -4787,6 +4795,7 @@ function renderProjects() {
 
   let projects = data.projects.slice();
   if (areaFilter) projects = projects.filter(p => p.area === areaFilter);
+  if (projectPersonFilter) projects = projects.filter(p => (p.personIds || []).includes(projectPersonFilter));
   if (!projectsShowCompleted) projects = projects.filter(p => p.status !== 'done' && p.status !== 'completed');
   if (stalledFilter !== null) {
     projects = projects.filter(p => {
@@ -4943,6 +4952,9 @@ function addProject() {
 // WAITING
 // =================================================================
 let waitingShowResolved = false;
+let waitingPersonFilter = null;
+function setWaitingPersonFilter(id) { waitingPersonFilter = id; renderWaiting(); }
+function openWaitingPersonFilter(el) { openPersonFilterDropdown(el, setWaitingPersonFilter); }
 
 function renderWaiting() {
   const list = document.getElementById('list-waiting');
@@ -4954,6 +4966,7 @@ function renderWaiting() {
     <div class="toolbar">
       <span class="filter-chip ${!waitingShowResolved ? 'on' : ''}" onclick="toggleWaitingResolved(false)">Active (${activeCount})</span>
       <span class="filter-chip ${waitingShowResolved ? 'on' : ''}" onclick="toggleWaitingResolved(true)">Show resolved archive (${resolvedCount})</span>
+      <span class="filter-chip ${waitingPersonFilter ? 'on' : ''}" onclick="event.stopPropagation(); waitingPersonFilter ? setWaitingPersonFilter(null) : openWaitingPersonFilter(this)">${personChipLabel(waitingPersonFilter)}</span>
     </div>
   `;
 
@@ -4964,6 +4977,7 @@ function renderWaiting() {
 
   let items = data.waiting.slice();
   if (!waitingShowResolved) items = items.filter(w => !w.resolved);
+  if (waitingPersonFilter) items = items.filter(w => (w.personIds || []).includes(waitingPersonFilter));
   const waitQ = (document.getElementById('search-waiting')?.value || '').toLowerCase().trim();
   if (waitQ) items = items.filter(w =>
     (w.text || '').toLowerCase().includes(waitQ) ||
@@ -5771,7 +5785,8 @@ function filterPersonPickerDropdown(bucket, term) {
   const list = document.querySelector(`.person-picker[data-picker="${bucket}"] .picker-options`);
   if (!list) return;
   const selected = new Set(getPickerIds(bucket));
-  const t = (term || '').toLowerCase();
+  const raw = (term || '').trim();
+  const t = raw.toLowerCase();
   const candidates = (data.people || [])
     .filter(p => p.active !== false)
     .filter(p => !selected.has(p.id))
@@ -5781,16 +5796,42 @@ function filterPersonPickerDropdown(bucket, term) {
       (p.title || '').toLowerCase().includes(t))
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     .slice(0, 30);
-  if (candidates.length === 0) {
-    list.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--muted);">No matches. Add new people in the People tab.</div>`;
-    return;
-  }
-  list.innerHTML = candidates.map(p => `
+  const exactMatch = raw && (data.people || []).some(p => (p.name || '').toLowerCase() === t);
+  let html = candidates.map(p => `
     <div class="picker-option" onclick="personPickerAdd('${bucket}', '${p.id}')">
       <span>${escapeHtml(p.name)}</span>
       <span class="picker-option-meta">${escapeHtml(p.title || '')}${p.title && p.org ? ' · ' : ''}${escapeHtml(p.org || '')}</span>
     </div>
   `).join('');
+  if (raw && !exactMatch) {
+    html += `
+      <div class="picker-option" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:8px;color:var(--accent);" onclick="createAndAddPersonToPicker('${bucket}', ${JSON.stringify(raw).replace(/"/g,'&quot;')})">
+        <span>+ Add "${escapeHtml(raw)}" as new person</span>
+        <span class="picker-option-meta">creates in People tab</span>
+      </div>
+    `;
+  }
+  if (!html) html = `<div style="padding:8px 10px;font-size:12px;color:var(--muted);">Type a name to search or add.</div>`;
+  list.innerHTML = html;
+}
+
+function createAndAddPersonToPicker(bucket, name) {
+  const trimmed = (name || '').trim();
+  if (!trimmed) return;
+  if (!data.people) data.people = [];
+  const p = {
+    id: nextPersonId(),
+    name: trimmed,
+    email: '', phone: '', title: '', org: '',
+    category: 'other', active: true, cadence: '',
+    lastInteraction: null, notes: ''
+  };
+  data.people.push(p);
+  const ids = getPickerIds(bucket);
+  if (!ids.includes(p.id)) ids.push(p.id);
+  setPickerIds(bucket, ids);
+  hidePersonPickerDropdown(bucket);
+  showToast(`Added ${p.name} — edit details in People tab`);
 }
 function renderPersonPicker(bucket) {
   const container = document.querySelector(`.person-picker[data-picker="${bucket}"]`);
@@ -5864,7 +5905,8 @@ function filterInlineItemPickerOptions(term) {
   const item = (data.items || []).find(x => x.id === inlineItemPickerFor.id);
   if (!item) return;
   const selected = new Set(item.personIds || []);
-  const t = (term || '').toLowerCase();
+  const raw = (term || '').trim();
+  const t = raw.toLowerCase();
   const candidates = (data.people || [])
     .filter(p => p.active !== false)
     .filter(p => !selected.has(p.id))
@@ -5874,16 +5916,50 @@ function filterInlineItemPickerOptions(term) {
       (p.title || '').toLowerCase().includes(t))
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     .slice(0, 30);
-  if (candidates.length === 0) {
-    list.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--muted);">No matches.</div>`;
-    return;
-  }
-  list.innerHTML = candidates.map(p => `
+
+  // Show existing matches + an "Add new" option when the user has typed something
+  // that doesn't exactly match an existing person. Grow the roster organically.
+  const exactMatch = raw && (data.people || []).some(p => (p.name || '').toLowerCase() === t);
+  let html = candidates.map(p => `
     <div class="picker-opt" onclick="addPersonToItem('${p.id}')">
       <span>${escapeHtml(p.name)}</span>
       <span class="meta">${escapeHtml(p.title || '')}${p.title && p.org ? ' · ' : ''}${escapeHtml(p.org || '')}</span>
     </div>
   `).join('');
+  if (raw && !exactMatch) {
+    html += `
+      <div class="picker-opt" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:8px;color:var(--accent);" onclick="createAndAddPersonToItem(${JSON.stringify(raw).replace(/"/g,'&quot;')})">
+        <span>+ Add "${escapeHtml(raw)}" as new person</span>
+        <span class="meta">creates in People tab</span>
+      </div>
+    `;
+  }
+  if (!html) html = `<div style="padding:8px 10px;font-size:12px;color:var(--muted);">Type a name to search or add.</div>`;
+  list.innerHTML = html;
+}
+
+// Create a new person with the given name and immediately add to the current item.
+function createAndAddPersonToItem(name) {
+  const trimmed = (name || '').trim();
+  if (!trimmed || !inlineItemPickerFor) return;
+  if (!data.people) data.people = [];
+  const p = {
+    id: nextPersonId(),
+    name: trimmed,
+    email: '', phone: '', title: '', org: '',
+    category: 'other', active: true, cadence: '',
+    lastInteraction: null, notes: ''
+  };
+  data.people.push(p);
+  const item = (data.items || []).find(x => x.id === inlineItemPickerFor.id);
+  if (item) {
+    if (!Array.isArray(item.personIds)) item.personIds = [];
+    if (!item.personIds.includes(p.id)) item.personIds.push(p.id);
+  }
+  closeItemPersonPicker();
+  save();
+  render();
+  showToast(`Added ${p.name} — edit details in People tab`);
 }
 function addPersonToItem(personId) {
   if (!inlineItemPickerFor) return;
@@ -5902,6 +5978,72 @@ function removePersonFromItem(itemId, personId) {
   save();
   render();
 }
+// -----------------------------------------------------------------
+// Person filter dropdown (shared by Next / Projects / Waiting)
+// -----------------------------------------------------------------
+let _personFilterCallback = null;
+function openPersonFilterDropdown(buttonEl, onSelect) {
+  closePersonFilterDropdown();
+  _personFilterCallback = onSelect;
+  const dropdown = document.createElement('div');
+  dropdown.id = 'person-filter-dropdown';
+  dropdown.style.cssText = 'position:absolute;z-index:1000;background:var(--surface);border:1px solid var(--border-strong);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,0.14);padding:6px;width:280px;max-height:340px;overflow-y:auto;';
+  dropdown.innerHTML = `
+    <input type="text" class="picker-search" placeholder="Filter by person..." oninput="filterPersonFilterOptions(this.value)" />
+    <div id="person-filter-options"></div>
+  `;
+  document.body.appendChild(dropdown);
+  const rect = buttonEl.getBoundingClientRect();
+  dropdown.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+  dropdown.style.left = Math.max(8, Math.min(rect.left + window.scrollX, window.scrollX + window.innerWidth - 288)) + 'px';
+  dropdown.querySelector('input').focus();
+  filterPersonFilterOptions('');
+  setTimeout(() => {
+    document.addEventListener('click', function outside(e) {
+      const d = document.getElementById('person-filter-dropdown');
+      if (!d) { document.removeEventListener('click', outside); return; }
+      if (!d.contains(e.target)) { closePersonFilterDropdown(); document.removeEventListener('click', outside); }
+    });
+  }, 0);
+}
+function closePersonFilterDropdown() {
+  const el = document.getElementById('person-filter-dropdown');
+  if (el) el.remove();
+  _personFilterCallback = null;
+}
+function filterPersonFilterOptions(term) {
+  const list = document.getElementById('person-filter-options');
+  if (!list) return;
+  const t = (term || '').toLowerCase();
+  // Only show people who actually have items — keep the list scoped
+  const idsInUse = new Set();
+  (data.items || []).forEach(it => (it.personIds || []).forEach(pid => idsInUse.add(pid)));
+  const people = (data.people || [])
+    .filter(p => idsInUse.has(p.id))
+    .filter(p => !t || (p.name || '').toLowerCase().includes(t) || (p.org || '').toLowerCase().includes(t))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  if (people.length === 0) {
+    list.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--muted);">No people match, or no items yet reference anyone.</div>`;
+    return;
+  }
+  list.innerHTML = people.map(p => `
+    <div class="picker-opt" onclick="applyPersonFilterSelection('${p.id}')">
+      <span>${escapeHtml(p.name)}</span>
+      <span class="meta">${escapeHtml(p.org || '')}</span>
+    </div>
+  `).join('');
+}
+function applyPersonFilterSelection(id) {
+  const cb = _personFilterCallback;
+  closePersonFilterDropdown();
+  if (cb) cb(id);
+}
+function personChipLabel(id) {
+  if (!id) return '👤 Person';
+  const p = (data.people || []).find(x => x.id === id);
+  return `👤 ${escapeHtml((p && p.name) || id)} ×`;
+}
+
 // Renders inline "person-tag" chips for display under item text.
 function renderItemPersonLine(item) {
   const ids = (item && item.personIds) || [];
