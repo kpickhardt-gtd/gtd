@@ -280,6 +280,17 @@
   .person-picker .picker-option { padding: 6px 10px; cursor: pointer; border-radius: 5px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .person-picker .picker-option:hover { background: var(--primary-soft, #eef2ff); }
   .person-picker .picker-option .picker-option-meta { font-size: 11px; color: var(--muted); text-align: right; white-space: nowrap; }
+  /* Person tags on item cards */
+  .person-tag-line { margin: 4px 0 2px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .person-tag { display: inline-flex; align-items: center; gap: 2px; padding: 1px 4px 1px 8px; background: var(--primary-soft, #eef2ff); color: var(--accent, #2563eb); border-radius: 10px; font-size: 11px; font-weight: 500; cursor: pointer; }
+  .person-tag:hover { background: #dbeafe; }
+  .person-tag .person-tag-remove { font-size: 12px; line-height: 1; opacity: 0.5; padding: 0 4px; cursor: pointer; border-radius: 8px; }
+  .person-tag .person-tag-remove:hover { opacity: 1; color: #dc2626; }
+  #inline-person-picker { font-family: inherit; }
+  #inline-person-picker .picker-search { width: 100%; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 5px; font-size: 13px; margin-bottom: 4px; box-sizing: border-box; }
+  #inline-person-picker .picker-opt { padding: 6px 10px; cursor: pointer; border-radius: 5px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  #inline-person-picker .picker-opt:hover { background: var(--primary-soft, #eef2ff); }
+  #inline-person-picker .picker-opt .meta { font-size: 11px; color: var(--muted); text-align: right; white-space: nowrap; }
   button.btn {
     background: var(--primary);
     color: #fff;
@@ -4327,12 +4338,14 @@ function renderInbox() {
     <div class="item">
       <div class="item-body">
         <div class="item-text">${escapeHtml(i.text)}${i.captured ? `<span class="age-tag">(${formatAge(i.captured)})</span>` : ''}</div>
+        ${renderItemPersonLine(i)}
         <div class="item-meta">
           <span class="chip id">#${escapeHtml(i.id)}</span>
           <span class="chip">captured ${i.captured}</span>
         </div>
       </div>
       <div class="item-actions">
+        <button class="icon-btn" title="Add person" onclick="openItemPersonPicker('${i.id}', this)">👤 + Person</button>
         <button class="icon-btn" title="Edit" onclick="startEdit('inbox','${i.id}')">✏️</button>
         <button class="icon-btn" title="Send to Next Actions" onclick="processInbox('${i.id}','next')">→ Next</button>
         <button class="icon-btn" title="Make a Project" onclick="processInbox('${i.id}','project')">→ Project</button>
@@ -4480,6 +4493,7 @@ function renderNext() {
                 ? `<span class="age-tag">(${formatAge(n.created)})</span>`
                 : ''
           }</div>
+          ${renderItemPersonLine(n)}
           <div class="item-meta">
             <span class="chip id">#${escapeHtml(n.id)}</span>
             <span class="chip context">${escapeHtml(n.context)}</span>
@@ -4539,6 +4553,7 @@ function renderNext() {
           ${!n.done && !isStarted ? `<button class="icon-btn" title="Mark started" onclick="startNext('${n.id}')">▶ Start</button>` : ''}
           ${!n.done && isStarted ? `<button class="icon-btn" title="Mark not started (clear flag)" onclick="startNext('${n.id}')">↺ Unstart</button>` : ''}
           ${!n.done ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('next','${n.id}')">📝 Add note</button>` : ''}
+          ${!n.done ? `<button class="icon-btn" title="Add person" onclick="openItemPersonPicker('${n.id}', this)">👤 + Person</button>` : ''}
           <button class="icon-btn" title="Edit" onclick="startEdit('next','${n.id}')">✏️ Edit</button>
           ${!n.done ? `<button class="icon-btn" title="Convert this Next Action into a multi-step Project (preserves all fields)" onclick="convertToProject('${n.id}')">↑ To Project</button>` : ''}
           <button class="btn danger" onclick="deleteItem('next','${n.id}')">${isDeleting('next', n.id) ? '⚠️ Click again' : 'Delete'}</button>
@@ -4833,6 +4848,7 @@ function renderProjectCard(p) {
           ${area ? `<span class="chip area">${escapeHtml(area.title.split(' ').slice(0,2).join(' '))}</span>` : ''}
         </div>
       </div>
+      ${renderItemPersonLine(p)}
       ${p.outcome ? `<div class="outcome">${escapeHtml(p.outcome)}</div>` : ''}
       ${p.notes ? `<div class="item-notes">${linkifyNotes(p.notes)}</div>` : ''}
       ${addingNoteFor === 'projects:' + p.id ? `
@@ -4870,6 +4886,7 @@ function renderProjectCard(p) {
           <option value="low"  ${(p.priority||'med')==='low' ?'selected':''}>↓ low</option>
         </select>
         ${p.status !== 'completed' && p.status !== 'done' ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('projects','${p.id}')">📝 Add note</button>` : ''}
+        ${p.status !== 'completed' && p.status !== 'done' ? `<button class="icon-btn" title="Add person" onclick="openItemPersonPicker('${p.id}', this)">👤 + Person</button>` : ''}
         <button class="icon-btn" title="Edit project" onclick="startEdit('projects','${p.id}')">✏️ Edit</button>
         <button class="icon-btn" title="Convert this Project into a single Next Action (only allowed when no open linked actions remain)" onclick="convertToAction('${p.id}')">↓ To Action</button>
         <button class="btn danger" onclick="deleteItem('projects','${p.id}')">${isDeleting('projects', p.id) ? '⚠️ Click again' : 'Delete'}</button>
@@ -4970,6 +4987,7 @@ function renderWaiting() {
       <div class="item ${w.resolved ? 'resolved' : ''}">
         <div class="item-body">
           <div class="item-text">${escapeHtml(w.text)}${ageStr ? `<span class="age-tag">(${ageStr})</span>` : ''}</div>
+          ${renderItemPersonLine(w)}
           <div class="item-meta">
             <span class="chip id">#${escapeHtml(w.id)}</span>
             ${w.who ? `<span class="chip">👤 ${escapeHtml(w.who)}</span>` : ''}
@@ -5010,6 +5028,7 @@ function renderWaiting() {
         <div class="item-actions">
           ${renderStatusDropdown(w)}
           ${!w.resolved ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('waiting','${w.id}')">📝 Add note</button>` : ''}
+          ${!w.resolved ? `<button class="icon-btn" title="Add person" onclick="openItemPersonPicker('${w.id}', this)">👤 + Person</button>` : ''}
           <button class="icon-btn" title="Edit" onclick="startEdit('waiting','${w.id}')">✏️ Edit</button>
           ${!w.resolved ? `<button class="btn danger" onclick="resolveItem('waiting','${w.id}')">${isResolving('waiting', w.id) ? '⚠️ Click again' : 'Resolved'}</button>` : `<button class="btn danger" onclick="deleteItem('waiting','${w.id}')">${isDeleting('waiting', w.id) ? '⚠️ Click again' : 'Delete'}</button>`}
         </div>
@@ -5800,6 +5819,100 @@ function initPersonPicker(bucket, ids) {
   if (!el) return;
   el.dataset.selected = JSON.stringify(Array.isArray(ids) ? ids : []);
   renderPersonPicker(bucket);
+}
+
+// -----------------------------------------------------------------
+// Inline per-item picker + person-tag display on cards
+// -----------------------------------------------------------------
+let inlineItemPickerFor = null; // { id }
+
+function openItemPersonPicker(itemId, buttonEl) {
+  closeItemPersonPicker();
+  inlineItemPickerFor = { id: itemId };
+  const dropdown = document.createElement('div');
+  dropdown.id = 'inline-person-picker';
+  dropdown.style.cssText = 'position:absolute;z-index:1000;background:var(--surface);border:1px solid var(--border-strong);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,0.14);padding:6px;width:300px;max-height:320px;overflow-y:auto;';
+  dropdown.innerHTML = `
+    <input type="text" class="picker-search" placeholder="Search people..." oninput="filterInlineItemPickerOptions(this.value)" />
+    <div id="inline-person-picker-options"></div>
+  `;
+  document.body.appendChild(dropdown);
+  const rect = buttonEl.getBoundingClientRect();
+  const dropW = 300;
+  const leftPref = rect.left + window.scrollX;
+  const leftMax = window.scrollX + window.innerWidth - dropW - 8;
+  dropdown.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+  dropdown.style.left = Math.max(8, Math.min(leftPref, leftMax)) + 'px';
+  dropdown.querySelector('input').focus();
+  filterInlineItemPickerOptions('');
+  setTimeout(() => {
+    document.addEventListener('click', function outside(e) {
+      const d = document.getElementById('inline-person-picker');
+      if (!d) { document.removeEventListener('click', outside); return; }
+      if (!d.contains(e.target)) { closeItemPersonPicker(); document.removeEventListener('click', outside); }
+    });
+  }, 0);
+}
+function closeItemPersonPicker() {
+  const el = document.getElementById('inline-person-picker');
+  if (el) el.remove();
+  inlineItemPickerFor = null;
+}
+function filterInlineItemPickerOptions(term) {
+  const list = document.getElementById('inline-person-picker-options');
+  if (!list || !inlineItemPickerFor) return;
+  const item = (data.items || []).find(x => x.id === inlineItemPickerFor.id);
+  if (!item) return;
+  const selected = new Set(item.personIds || []);
+  const t = (term || '').toLowerCase();
+  const candidates = (data.people || [])
+    .filter(p => p.active !== false)
+    .filter(p => !selected.has(p.id))
+    .filter(p => !t ||
+      (p.name || '').toLowerCase().includes(t) ||
+      (p.org || '').toLowerCase().includes(t) ||
+      (p.title || '').toLowerCase().includes(t))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    .slice(0, 30);
+  if (candidates.length === 0) {
+    list.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--muted);">No matches.</div>`;
+    return;
+  }
+  list.innerHTML = candidates.map(p => `
+    <div class="picker-opt" onclick="addPersonToItem('${p.id}')">
+      <span>${escapeHtml(p.name)}</span>
+      <span class="meta">${escapeHtml(p.title || '')}${p.title && p.org ? ' · ' : ''}${escapeHtml(p.org || '')}</span>
+    </div>
+  `).join('');
+}
+function addPersonToItem(personId) {
+  if (!inlineItemPickerFor) return;
+  const item = (data.items || []).find(x => x.id === inlineItemPickerFor.id);
+  if (!item) return;
+  if (!Array.isArray(item.personIds)) item.personIds = [];
+  if (!item.personIds.includes(personId)) item.personIds.push(personId);
+  closeItemPersonPicker();
+  save();
+  render();
+}
+function removePersonFromItem(itemId, personId) {
+  const item = (data.items || []).find(x => x.id === itemId);
+  if (!item || !Array.isArray(item.personIds)) return;
+  item.personIds = item.personIds.filter(id => id !== personId);
+  save();
+  render();
+}
+// Renders inline "person-tag" chips for display under item text.
+function renderItemPersonLine(item) {
+  const ids = (item && item.personIds) || [];
+  if (ids.length === 0) return '';
+  const chips = ids.map(id => {
+    const p = (data.people || []).find(x => x.id === id);
+    const name = p ? p.name : id;
+    const tooltip = p ? [p.title, p.org].filter(Boolean).join(' · ') : id;
+    return `<span class="person-tag" title="${escapeHtml(tooltip || 'View items')}" onclick="event.stopPropagation();selectPerson('${id}');navigateToTab('people');"><span>${escapeHtml(name || '(unnamed)')}</span><span class="person-tag-remove" title="Remove" onclick="event.stopPropagation();removePersonFromItem('${item.id}','${id}')">×</span></span>`;
+  }).join('');
+  return `<div class="person-tag-line">${chips}</div>`;
 }
 
 // Return all items where personIds includes the given person id.
