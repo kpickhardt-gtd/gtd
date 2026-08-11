@@ -286,6 +286,8 @@
   .person-tag:hover { background: #dbeafe; }
   .person-tag .person-tag-remove { font-size: 12px; line-height: 1; opacity: 0.5; padding: 0 4px; cursor: pointer; border-radius: 8px; }
   .person-tag .person-tag-remove:hover { opacity: 1; color: #dc2626; }
+  .person-tag.inherited { background: #f3f4f6; color: #4b5563; }
+  .person-tag.inherited::before { content: '↳ '; font-size: 10px; opacity: 0.6; }
   #inline-person-picker { font-family: inherit; }
   #inline-person-picker .picker-search { width: 100%; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 5px; font-size: 13px; margin-bottom: 4px; box-sizing: border-box; }
   #inline-person-picker .picker-opt { padding: 6px 10px; cursor: pointer; border-radius: 5px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -4427,7 +4429,7 @@ function renderNext() {
   let items = data.next.slice();
   if (nextFilters.context) items = items.filter(n => n.context === nextFilters.context);
   if (nextFilters.priority) items = items.filter(n => n.priority === nextFilters.priority);
-  if (nextFilters.personId) items = items.filter(n => (n.personIds || []).includes(nextFilters.personId));
+  if (nextFilters.personId) items = items.filter(n => effectivePersonIds(n).includes(nextFilters.personId));
   if (!nextFilters.showDone) items = items.filter(n => !n.done);
   const nextQ = (document.getElementById('search-next')?.value || '').toLowerCase().trim();
   if (nextQ) items = items.filter(n =>
@@ -4977,7 +4979,7 @@ function renderWaiting() {
 
   let items = data.waiting.slice();
   if (!waitingShowResolved) items = items.filter(w => !w.resolved);
-  if (waitingPersonFilter) items = items.filter(w => (w.personIds || []).includes(waitingPersonFilter));
+  if (waitingPersonFilter) items = items.filter(w => effectivePersonIds(w).includes(waitingPersonFilter));
   const waitQ = (document.getElementById('search-waiting')?.value || '').toLowerCase().trim();
   if (waitQ) items = items.filter(w =>
     (w.text || '').toLowerCase().includes(waitQ) ||
@@ -5904,7 +5906,7 @@ function filterInlineItemPickerOptions(term) {
   if (!list || !inlineItemPickerFor) return;
   const item = (data.items || []).find(x => x.id === inlineItemPickerFor.id);
   if (!item) return;
-  const selected = new Set(item.personIds || []);
+  const selected = new Set(effectivePersonIds(item));
   const raw = (term || '').trim();
   const t = raw.toLowerCase();
   const candidates = (data.people || [])
@@ -5965,16 +5967,34 @@ function addPersonToItem(personId) {
   if (!inlineItemPickerFor) return;
   const item = (data.items || []).find(x => x.id === inlineItemPickerFor.id);
   if (!item) return;
-  if (!Array.isArray(item.personIds)) item.personIds = [];
-  if (!item.personIds.includes(personId)) item.personIds.push(personId);
+  // If this person was previously excluded from project inheritance, un-exclude
+  if (Array.isArray(item.excludedPersonIds) && item.excludedPersonIds.includes(personId)) {
+    item.excludedPersonIds = item.excludedPersonIds.filter(id => id !== personId);
+  } else {
+    if (!Array.isArray(item.personIds)) item.personIds = [];
+    if (!item.personIds.includes(personId)) item.personIds.push(personId);
+  }
   closeItemPersonPicker();
   save();
   render();
 }
 function removePersonFromItem(itemId, personId) {
   const item = (data.items || []).find(x => x.id === itemId);
-  if (!item || !Array.isArray(item.personIds)) return;
-  item.personIds = item.personIds.filter(id => id !== personId);
+  if (!item) return;
+  // If inherited from project, add to excludedPersonIds so it stays removed for THIS action
+  if (item.kind === 'action' && item.projectId) {
+    const proj = (data.items || []).find(x => x.id === item.projectId && x.kind === 'project');
+    const isFromProject = proj && Array.isArray(proj.personIds) && proj.personIds.includes(personId);
+    const inOwn = Array.isArray(item.personIds) && item.personIds.includes(personId);
+    if (isFromProject && !inOwn) {
+      if (!Array.isArray(item.excludedPersonIds)) item.excludedPersonIds = [];
+      if (!item.excludedPersonIds.includes(personId)) item.excludedPersonIds.push(personId);
+    }
+  }
+  // Always remove from own list too
+  if (Array.isArray(item.personIds)) {
+    item.personIds = item.personIds.filter(id => id !== personId);
+  }
   save();
   render();
 }
@@ -6017,7 +6037,7 @@ function filterPersonFilterOptions(term) {
   const t = (term || '').toLowerCase();
   // Only show people who actually have items — keep the list scoped
   const idsInUse = new Set();
-  (data.items || []).forEach(it => (it.personIds || []).forEach(pid => idsInUse.add(pid)));
+  (data.items || []).forEach(it => effectivePersonIds(it).forEach(pid => idsInUse.add(pid)));
   const people = (data.people || [])
     .filter(p => idsInUse.has(p.id))
     .filter(p => !t || (p.name || '').toLowerCase().includes(t) || (p.org || '').toLowerCase().includes(t))
@@ -6045,21 +6065,50 @@ function personChipLabel(id) {
 }
 
 // Renders inline "person-tag" chips for display under item text.
+// Uses effective set (own + project-inherited − excluded).
 function renderItemPersonLine(item) {
-  const ids = (item && item.personIds) || [];
+  const ids = effectivePersonIds(item);
   if (ids.length === 0) return '';
   const chips = ids.map(id => {
     const p = (data.people || []).find(x => x.id === id);
     const name = p ? p.name : id;
-    const tooltip = p ? [p.title, p.org].filter(Boolean).join(' · ') : id;
-    return `<span class="person-tag" title="${escapeHtml(tooltip || 'View items')}" onclick="event.stopPropagation();selectPerson('${id}');navigateToTab('people');"><span>${escapeHtml(name || '(unnamed)')}</span><span class="person-tag-remove" title="Remove" onclick="event.stopPropagation();removePersonFromItem('${item.id}','${id}')">×</span></span>`;
+    const inherited = isInheritedPersonId(item, id);
+    const tooltip = (p ? [p.title, p.org].filter(Boolean).join(' · ') : id) + (inherited ? ' (inherited from project)' : '');
+    return `<span class="person-tag${inherited ? ' inherited' : ''}" title="${escapeHtml(tooltip || 'View items')}" onclick="event.stopPropagation();selectPerson('${id}');navigateToTab('people');"><span>${escapeHtml(name || '(unnamed)')}</span><span class="person-tag-remove" title="${inherited ? 'Remove from this action (project keeps them)' : 'Remove'}" onclick="event.stopPropagation();removePersonFromItem('${item.id}','${id}')">×</span></span>`;
   }).join('');
   return `<div class="person-tag-line">${chips}</div>`;
 }
 
-// Return all items where personIds includes the given person id.
+// -----------------------------------------------------------------
+// Effective person set (project → action inheritance with override)
+// -----------------------------------------------------------------
+// Actions inherit their linked project's personIds by default. A user may:
+//   • Add extra people at the action level (item.personIds)
+//   • Remove an inherited person for a specific action (item.excludedPersonIds)
+// Effective = (project.personIds − excludedPersonIds) ∪ item.personIds
+function effectivePersonIds(item) {
+  if (!item) return [];
+  const own = Array.isArray(item.personIds) ? item.personIds : [];
+  if (item.kind !== 'action' || !item.projectId) return _dedupeStr(own);
+  const proj = (data.items || []).find(x => x.id === item.projectId && x.kind === 'project');
+  if (!proj || !Array.isArray(proj.personIds)) return _dedupeStr(own);
+  const excluded = new Set(Array.isArray(item.excludedPersonIds) ? item.excludedPersonIds : []);
+  const inherited = proj.personIds.filter(id => !excluded.has(id));
+  return _dedupeStr([...inherited, ...own]);
+}
+function isInheritedPersonId(item, personId) {
+  if (!item || item.kind !== 'action' || !item.projectId) return false;
+  if (Array.isArray(item.personIds) && item.personIds.includes(personId)) return false; // own overrides inherited marker
+  const proj = (data.items || []).find(x => x.id === item.projectId && x.kind === 'project');
+  if (!proj || !Array.isArray(proj.personIds)) return false;
+  const excluded = new Set(Array.isArray(item.excludedPersonIds) ? item.excludedPersonIds : []);
+  return proj.personIds.includes(personId) && !excluded.has(personId);
+}
+function _dedupeStr(arr) { const seen = new Set(); const out = []; for (const x of arr) if (!seen.has(x)) { seen.add(x); out.push(x); } return out; }
+
+// Return all items where the person is in the effective set.
 function itemsForPerson(personId) {
-  return (data.items || []).filter(it => Array.isArray(it.personIds) && it.personIds.includes(personId));
+  return (data.items || []).filter(it => effectivePersonIds(it).includes(personId));
 }
 
 // Return the count of OPEN items (not done, not someday) for a person.
