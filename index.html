@@ -275,7 +275,7 @@
   .person-picker .picker-chip .chip-remove:hover { opacity: 1; color: #dc2626; }
   .person-picker .picker-add { background: transparent; border: 1px dashed var(--border-strong); color: var(--muted); padding: 3px 10px; border-radius: 12px; cursor: pointer; font-size: 12px; }
   .person-picker .picker-add:hover { border-color: var(--accent); color: var(--accent); }
-  .person-picker .picker-dropdown { position: absolute; top: 100%; left: 0; right: 0; z-index: 10; max-height: 300px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); padding: 6px; margin-top: 4px; }
+  .person-picker .picker-dropdown { position: absolute; top: 100%; left: 0; right: 0; z-index: 600; max-height: 300px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); padding: 6px; margin-top: 4px; }
   .person-picker .picker-search { width: 100%; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 5px; font-size: 13px; margin-bottom: 4px; box-sizing: border-box; }
   .person-picker .picker-option { padding: 6px 10px; cursor: pointer; border-radius: 5px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .person-picker .picker-option:hover { background: var(--primary-soft, #eef2ff); }
@@ -5971,21 +5971,26 @@ function filterPersonPickerDropdown(bucket, term) {
   const raw = (term || '').trim();
   const t = raw.toLowerCase();
   const candidates = (data.people || [])
-    .filter(p => p.active !== false)
     .filter(p => !selected.has(p.id))
     .filter(p => !t ||
       (p.name || '').toLowerCase().includes(t) ||
       (p.org || '').toLowerCase().includes(t) ||
       (p.title || '').toLowerCase().includes(t))
-    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-    .slice(0, 30);
+    .sort((a, b) => {
+      // Active people first, then alphabetical within each group
+      const aAct = a.active !== false, bAct = b.active !== false;
+      if (aAct !== bAct) return aAct ? -1 : 1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
   const exactMatch = raw && (data.people || []).some(p => (p.name || '').toLowerCase() === t);
-  let html = candidates.map(p => `
-    <div class="picker-option" onclick="personPickerAdd('${bucket}', '${p.id}')">
-      <span>${escapeHtml(p.name)}</span>
+  let html = candidates.map(p => {
+    const inactive = p.active === false;
+    return `
+    <div class="picker-option" onclick="personPickerAdd('${bucket}', '${p.id}')" style="${inactive ? 'opacity:0.55;' : ''}">
+      <span>${escapeHtml(p.name)}${inactive ? ' <em style="font-size:11px;color:var(--muted);">(inactive)</em>' : ''}</span>
       <span class="picker-option-meta">${escapeHtml(p.title || '')}${p.title && p.org ? ' · ' : ''}${escapeHtml(p.org || '')}</span>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
   if (raw && !exactMatch) {
     html += `
       <div class="picker-option" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:8px;color:var(--accent);" data-new-name="${escapeHtml(raw)}" onclick="createAndAddPersonToPicker('${bucket}', this.dataset.newName)">
@@ -6091,21 +6096,26 @@ function filterInlineItemPickerOptions(term) {
   const raw = (term || '').trim();
   const t = raw.toLowerCase();
   const candidates = (data.people || [])
-    .filter(p => p.active !== false)
     .filter(p => !selected.has(p.id))
     .filter(p => !t ||
       (p.name || '').toLowerCase().includes(t) ||
       (p.org || '').toLowerCase().includes(t) ||
       (p.title || '').toLowerCase().includes(t))
-    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-    .slice(0, 30);
+    .sort((a, b) => {
+      // Active people first, then alphabetical within each group
+      const aAct = a.active !== false, bAct = b.active !== false;
+      if (aAct !== bAct) return aAct ? -1 : 1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
 
   // Show existing matches + an "Add new" option when the user has typed something
   // that doesn't exactly match an existing person. Grow the roster organically.
   const exactMatch = raw && (data.people || []).some(p => (p.name || '').toLowerCase() === t);
-  let html = candidates.map(p => `
-    <div class="picker-opt" onclick="addPersonToItem('${p.id}')">
-      <span>${escapeHtml(p.name)}</span>
+  let html = candidates.map(p => {
+    const inactive = p.active === false;
+    return `
+    <div class="picker-opt" onclick="addPersonToItem('${p.id}')" style="${inactive ? 'opacity:0.55;' : ''}">
+      <span>${escapeHtml(p.name)}${inactive ? ' <em style="font-size:11px;color:var(--muted);">(inactive)</em>' : ''}</span>
       <span class="meta">${escapeHtml(p.title || '')}${p.title && p.org ? ' · ' : ''}${escapeHtml(p.org || '')}</span>
     </div>
   `).join('');
