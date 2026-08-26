@@ -7128,9 +7128,22 @@ function setBootMsg(msg) {
 async function bootstrap() {
   syncBucketViews();
   try {
-    // If Drive sync is configured, initDriveOnLoad handles everything — skip FSA bootstrap
+    // If Drive sync is configured, run Drive boot path and skip FSA entirely
     if (localStorage.getItem(STORAGE_KEY + ':gdriveFileId')) {
+      // Render from localStorage cache immediately so the app isn't blank
+      try {
+        const cached = localStorage.getItem(STORAGE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(parsed) };
+          syncBucketViews();
+        }
+      } catch(e) {}
       hideBootLoading();
+      render();
+      restoreTab();
+      // Then silently pull latest from Drive in the background
+      initDriveOnLoad();
       return;
     }
     if (!fsaSupported()) {
