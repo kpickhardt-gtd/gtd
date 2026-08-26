@@ -1203,6 +1203,7 @@
     <div style="margin-top:4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       <span id="cloud-sync-status" class="cloud-sync-indicator status-init">⋯ Initializing</span>
       <button id="reconnect-drive-btn" onclick="connectGoogleDrive()" title="Reconnect to Google Drive" style="font-size:11px;padding:3px 10px;border:1px solid var(--border-strong);background:var(--surface);border-radius:5px;cursor:pointer;color:var(--text);">🔗 Reconnect Drive</button>
+      <span id="app-version-badge" style="font-size:10px;color:var(--subtle,#adb5bd);margin-left:4px;" title="App version"></span>
     </div>
   </div>
   <div class="quick-capture">
@@ -1898,6 +1899,7 @@
 // DATA MODEL & STORAGE
 // =================================================================
 const STORAGE_KEY = 'kevin-gtd-v1';
+const APP_VERSION = '2026-08-26-01'; // Format: YYYY-MM-DD-NN (increment NN per deploy)
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
 const DEFAULT_DATA = {
@@ -3946,6 +3948,8 @@ function renderDate() {
   const d = new Date();
   const opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
   document.getElementById('dateLine').textContent = d.toLocaleDateString('en-US', opts);
+  const vb = document.getElementById('app-version-badge');
+  if (vb) vb.textContent = 'v' + APP_VERSION;
 }
 
 function renderCounts() {
@@ -6117,8 +6121,8 @@ function filterInlineItemPickerOptions(term) {
     <div class="picker-opt" onclick="addPersonToItem('${p.id}')" style="${inactive ? 'opacity:0.55;' : ''}">
       <span>${escapeHtml(p.name)}${inactive ? ' <em style="font-size:11px;color:var(--muted);">(inactive)</em>' : ''}</span>
       <span class="meta">${escapeHtml(p.title || '')}${p.title && p.org ? ' · ' : ''}${escapeHtml(p.org || '')}</span>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
   if (raw && !exactMatch) {
     html += `
       <div class="picker-opt" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:8px;color:var(--accent);" data-new-name="${escapeHtml(raw)}" onclick="createAndAddPersonToItem(this.dataset.newName)">
@@ -7209,6 +7213,19 @@ async function bootstrap() {
 }
 
 bootstrap();
+
+// Failsafe: if the boot spinner is still showing after 8 seconds, something
+// silently hung. Force-hide it and render so the app is never permanently stuck.
+setTimeout(() => {
+  const el = document.getElementById('boot-loading');
+  if (el && el.style.display !== 'none') {
+    console.warn('Boot timeout — forcing render');
+    hideBootLoading();
+    try { render(); } catch(e) { console.error('render error:', e); }
+    try { restoreTab(); } catch(e) {}
+    setCloudStatus('error', 'Load timed out — click Reconnect to sync');
+  }
+}, 8000);
 
 // ─── Mobile nav helpers ───────────────────────────────────────────────────
 function toggleMobileMore() {
