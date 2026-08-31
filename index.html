@@ -275,7 +275,7 @@
   .person-picker .picker-chip .chip-remove:hover { opacity: 1; color: #dc2626; }
   .person-picker .picker-add { background: transparent; border: 1px dashed var(--border-strong); color: var(--muted); padding: 3px 10px; border-radius: 12px; cursor: pointer; font-size: 12px; }
   .person-picker .picker-add:hover { border-color: var(--accent); color: var(--accent); }
-  .person-picker .picker-dropdown { position: absolute; top: 100%; left: 0; right: 0; z-index: 600; max-height: 300px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); padding: 6px; margin-top: 4px; }
+  .person-picker .picker-dropdown { position: absolute; top: 100%; left: 0; right: 0; z-index: 10; max-height: 300px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); padding: 6px; margin-top: 4px; }
   .person-picker .picker-search { width: 100%; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 5px; font-size: 13px; margin-bottom: 4px; box-sizing: border-box; }
   .person-picker .picker-option { padding: 6px 10px; cursor: pointer; border-radius: 5px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .person-picker .picker-option:hover { background: var(--primary-soft, #eef2ff); }
@@ -558,6 +558,7 @@
     background: var(--primary-soft) !important;
     animation: focus-pulse 1.8s ease-out;
   }
+  .quick-add-option:hover { background: var(--primary-soft); }
   @keyframes focus-pulse {
     0% { outline-color: var(--primary); background: var(--primary-soft); }
     50% { outline-color: transparent; }
@@ -1203,7 +1204,6 @@
     <div style="margin-top:4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       <span id="cloud-sync-status" class="cloud-sync-indicator status-init">⋯ Initializing</span>
       <button id="reconnect-drive-btn" onclick="connectGoogleDrive()" title="Reconnect to Google Drive" style="font-size:11px;padding:3px 10px;border:1px solid var(--border-strong);background:var(--surface);border-radius:5px;cursor:pointer;color:var(--text);">🔗 Reconnect Drive</button>
-      <span id="app-version-badge" style="font-size:10px;color:var(--subtle,#adb5bd);margin-left:4px;" title="App version"></span>
     </div>
   </div>
   <div class="quick-capture">
@@ -1211,6 +1211,14 @@
     <button class="btn" onclick="quickCapture()">Capture</button>
   </div>
   <div style="display:flex;gap:6px;align-items:center;">
+    <div id="quick-add-wrap" style="position:relative;">
+      <button id="quick-add-btn" class="btn secondary" onclick="toggleQuickAddMenu()" title="Quickly create a Project, Next Action, or Person">+ Add ▾</button>
+      <div id="quick-add-menu" style="display:none;position:absolute;top:calc(100% + 6px);left:0;min-width:170px;background:var(--surface,#fff);border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.18);z-index:500;overflow:hidden;">
+        <div class="quick-add-option" onclick="quickAddOpen('project')" style="padding:9px 14px;cursor:pointer;font-size:13px;">📁 Project</div>
+        <div class="quick-add-option" onclick="quickAddOpen('next')" style="padding:9px 14px;cursor:pointer;font-size:13px;border-top:1px solid var(--border);">✅ Next Action</div>
+        <div class="quick-add-option" onclick="quickAddOpen('person')" style="padding:9px 14px;cursor:pointer;font-size:13px;border-top:1px solid var(--border);">👤 Person</div>
+      </div>
+    </div>
     <div id="global-search-wrap" style="position:relative;">
       <button id="global-search-btn" class="help-btn" onclick="toggleGlobalSearch()" title="Search everything (projects, actions, waiting, goals, areas, people…)">🔍</button>
       <div id="global-search-panel" style="display:none;position:absolute;top:calc(100% + 6px);right:0;width:320px;max-height:420px;overflow-y:auto;background:var(--surface,#fff);border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.18);z-index:500;">
@@ -1899,7 +1907,6 @@
 // DATA MODEL & STORAGE
 // =================================================================
 const STORAGE_KEY = 'kevin-gtd-v1';
-const APP_VERSION = '2026-08-26-01'; // Format: YYYY-MM-DD-NN (increment NN per deploy)
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
 const DEFAULT_DATA = {
@@ -3915,6 +3922,54 @@ document.addEventListener('click', (e) => {
 });
 
 // =================================================================
+// QUICK ADD — "+ Add ▾" dropdown next to Capture. Jumps to the right
+// tab and opens that tab's existing add-form/inline-add, saving a click.
+// =================================================================
+function toggleQuickAddMenu() {
+  const menu = document.getElementById('quick-add-menu');
+  if (!menu) return;
+  const opening = menu.style.display === 'none' || !menu.style.display;
+  menu.style.display = opening ? 'block' : 'none';
+}
+
+function closeQuickAddMenu() {
+  const menu = document.getElementById('quick-add-menu');
+  if (menu) menu.style.display = 'none';
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('quick-add-wrap');
+  if (wrap && !wrap.contains(e.target)) closeQuickAddMenu();
+});
+
+function quickAddOpen(kind) {
+  closeQuickAddMenu();
+  if (kind === 'project') {
+    const btn = document.querySelector('nav button[data-tab="projects"]');
+    if (btn) btn.click();
+    setTimeout(() => {
+      const f = document.getElementById('form-projects');
+      if (f && !f.classList.contains('open')) toggleForm('projects');
+      const el = document.getElementById('project-title');
+      if (el) el.focus();
+    }, 60);
+  } else if (kind === 'next') {
+    const btn = document.querySelector('nav button[data-tab="next"]');
+    if (btn) btn.click();
+    setTimeout(() => {
+      const f = document.getElementById('form-next');
+      if (f && !f.classList.contains('open')) toggleForm('next');
+      const el = document.getElementById('next-text');
+      if (el) el.focus();
+    }, 60);
+  } else if (kind === 'person') {
+    const btn = document.querySelector('nav button[data-tab="people"]');
+    if (btn) btn.click();
+    setTimeout(() => { addPerson(); }, 60);
+  }
+}
+
+// =================================================================
 // RENDERING
 // =================================================================
 function render() {
@@ -3948,8 +4003,6 @@ function renderDate() {
   const d = new Date();
   const opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
   document.getElementById('dateLine').textContent = d.toLocaleDateString('en-US', opts);
-  const vb = document.getElementById('app-version-badge');
-  if (vb) vb.textContent = 'v' + APP_VERSION;
 }
 
 function renderCounts() {
@@ -5975,26 +6028,21 @@ function filterPersonPickerDropdown(bucket, term) {
   const raw = (term || '').trim();
   const t = raw.toLowerCase();
   const candidates = (data.people || [])
+    .filter(p => p.active !== false)
     .filter(p => !selected.has(p.id))
     .filter(p => !t ||
       (p.name || '').toLowerCase().includes(t) ||
       (p.org || '').toLowerCase().includes(t) ||
       (p.title || '').toLowerCase().includes(t))
-    .sort((a, b) => {
-      // Active people first, then alphabetical within each group
-      const aAct = a.active !== false, bAct = b.active !== false;
-      if (aAct !== bAct) return aAct ? -1 : 1;
-      return (a.name || '').localeCompare(b.name || '');
-    });
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    .slice(0, 30);
   const exactMatch = raw && (data.people || []).some(p => (p.name || '').toLowerCase() === t);
-  let html = candidates.map(p => {
-    const inactive = p.active === false;
-    return `
-    <div class="picker-option" onclick="personPickerAdd('${bucket}', '${p.id}')" style="${inactive ? 'opacity:0.55;' : ''}">
-      <span>${escapeHtml(p.name)}${inactive ? ' <em style="font-size:11px;color:var(--muted);">(inactive)</em>' : ''}</span>
+  let html = candidates.map(p => `
+    <div class="picker-option" onclick="personPickerAdd('${bucket}', '${p.id}')">
+      <span>${escapeHtml(p.name)}</span>
       <span class="picker-option-meta">${escapeHtml(p.title || '')}${p.title && p.org ? ' · ' : ''}${escapeHtml(p.org || '')}</span>
-    </div>`;
-  }).join('');
+    </div>
+  `).join('');
   if (raw && !exactMatch) {
     html += `
       <div class="picker-option" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:8px;color:var(--accent);" data-new-name="${escapeHtml(raw)}" onclick="createAndAddPersonToPicker('${bucket}', this.dataset.newName)">
@@ -6100,29 +6148,24 @@ function filterInlineItemPickerOptions(term) {
   const raw = (term || '').trim();
   const t = raw.toLowerCase();
   const candidates = (data.people || [])
+    .filter(p => p.active !== false)
     .filter(p => !selected.has(p.id))
     .filter(p => !t ||
       (p.name || '').toLowerCase().includes(t) ||
       (p.org || '').toLowerCase().includes(t) ||
       (p.title || '').toLowerCase().includes(t))
-    .sort((a, b) => {
-      // Active people first, then alphabetical within each group
-      const aAct = a.active !== false, bAct = b.active !== false;
-      if (aAct !== bAct) return aAct ? -1 : 1;
-      return (a.name || '').localeCompare(b.name || '');
-    });
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    .slice(0, 30);
 
   // Show existing matches + an "Add new" option when the user has typed something
   // that doesn't exactly match an existing person. Grow the roster organically.
   const exactMatch = raw && (data.people || []).some(p => (p.name || '').toLowerCase() === t);
-  let html = candidates.map(p => {
-    const inactive = p.active === false;
-    return `
-    <div class="picker-opt" onclick="addPersonToItem('${p.id}')" style="${inactive ? 'opacity:0.55;' : ''}">
-      <span>${escapeHtml(p.name)}${inactive ? ' <em style="font-size:11px;color:var(--muted);">(inactive)</em>' : ''}</span>
+  let html = candidates.map(p => `
+    <div class="picker-opt" onclick="addPersonToItem('${p.id}')">
+      <span>${escapeHtml(p.name)}</span>
       <span class="meta">${escapeHtml(p.title || '')}${p.title && p.org ? ' · ' : ''}${escapeHtml(p.org || '')}</span>
-    </div>`;
-  }).join('');
+    </div>
+  `).join('');
   if (raw && !exactMatch) {
     html += `
       <div class="picker-opt" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:8px;color:var(--accent);" data-new-name="${escapeHtml(raw)}" onclick="createAndAddPersonToItem(this.dataset.newName)">
@@ -7132,22 +7175,9 @@ function setBootMsg(msg) {
 async function bootstrap() {
   syncBucketViews();
   try {
-    // If Drive sync is configured, run Drive boot path and skip FSA entirely
+    // If Drive sync is configured, initDriveOnLoad handles everything — skip FSA bootstrap
     if (localStorage.getItem(STORAGE_KEY + ':gdriveFileId')) {
-      // Render from localStorage cache immediately so the app isn't blank
-      try {
-        const cached = localStorage.getItem(STORAGE_KEY);
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(parsed) };
-          syncBucketViews();
-        }
-      } catch(e) {}
       hideBootLoading();
-      render();
-      restoreTab();
-      // Then silently pull latest from Drive in the background
-      initDriveOnLoad();
       return;
     }
     if (!fsaSupported()) {
@@ -7213,19 +7243,6 @@ async function bootstrap() {
 }
 
 bootstrap();
-
-// Failsafe: if the boot spinner is still showing after 8 seconds, something
-// silently hung. Force-hide it and render so the app is never permanently stuck.
-setTimeout(() => {
-  const el = document.getElementById('boot-loading');
-  if (el && el.style.display !== 'none') {
-    console.warn('Boot timeout — forcing render');
-    hideBootLoading();
-    try { render(); } catch(e) { console.error('render error:', e); }
-    try { restoreTab(); } catch(e) {}
-    setCloudStatus('error', 'Load timed out — click Reconnect to sync');
-  }
-}, 8000);
 
 // ─── Mobile nav helpers ───────────────────────────────────────────────────
 function toggleMobileMore() {
