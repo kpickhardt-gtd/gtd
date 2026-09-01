@@ -1909,7 +1909,7 @@
 // =================================================================
 // Bump this on every shipped change so the header shows which version is live.
 // Format: YYYY-MM-DD.<short description of the change>
-const APP_BUILD = '2026-08-17.search-filters-quickadd-buildlabel';
+const APP_BUILD = '2026-08-17.search-filter-panel-close-fix';
 const STORAGE_KEY = 'kevin-gtd-v1';
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
@@ -3890,8 +3890,9 @@ function toggleGlobalSearch() {
     const input = document.getElementById('global-search-input');
     if (input) {
       input.value = '';
-      globalSearchIncludeDone = false;
-      globalSearchTypeFilter = null;
+      // Note: globalSearchIncludeDone / globalSearchTypeFilter are intentionally
+      // NOT reset here, so your filter choices persist across opening/closing
+      // the panel. Use the "All types" chip or "Hide done" chip to reset them.
       renderGlobalSearchResults();
       setTimeout(() => input.focus(), 30);
     }
@@ -3988,7 +3989,12 @@ function handleGlobalSearchKeydown(e) {
 
 document.addEventListener('click', (e) => {
   const wrap = document.getElementById('global-search-wrap');
-  if (wrap && !wrap.contains(e.target)) closeGlobalSearch();
+  // Use composedPath (captured when the event was dispatched) rather than
+  // e.target — clicking a filter chip re-renders the results and removes
+  // the clicked element from the DOM while the click is still bubbling,
+  // which would make a plain wrap.contains(e.target) check wrongly think
+  // the click landed outside the panel and close it.
+  if (wrap && !e.composedPath().includes(wrap)) closeGlobalSearch();
 });
 
 // =================================================================
