@@ -1221,7 +1221,7 @@
     </div>
     <div id="global-search-wrap" style="position:relative;">
       <button id="global-search-btn" class="help-btn" onclick="toggleGlobalSearch()" title="Search everything (projects, actions, waiting, goals, areas, people…)">🔍</button>
-      <div id="global-search-panel" style="display:none;position:absolute;top:calc(100% + 6px);right:0;width:320px;max-height:420px;overflow-y:auto;background:var(--surface,#fff);border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.18);z-index:500;">
+      <div id="global-search-panel" style="display:none;position:absolute;top:calc(100% + 6px);right:0;width:360px;max-height:480px;overflow-y:auto;background:var(--surface,#fff);border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.18);z-index:500;">
         <div style="padding:8px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface,#fff);">
           <input type="text" id="global-search-input" placeholder="Search everything…" oninput="renderGlobalSearchResults()" onkeydown="handleGlobalSearchKeydown(event)" style="width:100%;padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;box-sizing:border-box;" />
         </div>
@@ -3826,8 +3826,11 @@ function focusItem(id) {
 // =================================================================
 function collectSearchableRecords() {
   const records = [];
+  const projectsById = {};
+  (data.items || []).forEach(x => { if (x.kind === 'project') projectsById[x.id] = x; });
   (data.items || []).forEach(it => {
     let bucket, typeLabel;
+    const done = it.status === 'done' || it.status === 'completed';
     if (it.kind === 'inbox') { bucket = 'inbox'; typeLabel = 'Inbox'; }
     else if (it.kind === 'project') { bucket = 'projects'; typeLabel = 'Project'; }
     else if (it.kind === 'action') {
@@ -3839,29 +3842,40 @@ function collectSearchableRecords() {
       const p = (data.people || []).find(x => x.id === pid);
       return p && p.name;
     }).filter(Boolean);
-    const sub = personNames.length ? personNames.join(', ') : (it.context || '');
+    const parentProject = it.projectId ? projectsById[it.projectId] : null;
+    const subParts = [];
+    if (personNames.length) subParts.push(personNames.join(', '));
+    else if (it.context) subParts.push(it.context);
+    if (parentProject) subParts.push('↳ ' + (parentProject.text || parentProject.title || '').slice(0, 40));
+    if (done) subParts.push('✓ done');
+    else if (it.dueDate) subParts.push('due ' + it.dueDate);
     const haystack = [it.text, it.title, it.notes, ...personNames, ...(it.tags || [])].filter(Boolean).join(' ').toLowerCase();
-    records.push({ id: it.id, bucket, typeLabel, title: it.text || it.title || '(untitled)', sub, haystack });
+    records.push({ id: it.id, bucket, typeLabel, done, title: it.text || it.title || '(untitled)', sub: subParts.join(' · '), haystack });
   });
   (data.areas || []).forEach(a => {
     const haystack = [a.title || a.name, a.desc || a.description].filter(Boolean).join(' ').toLowerCase();
-    records.push({ id: a.id, bucket: 'areas', typeLabel: 'Area of Focus', title: a.title || a.name || '(untitled)', sub: '', haystack });
+    records.push({ id: a.id, bucket: 'areas', typeLabel: 'Area of Focus', done: false, title: a.title || a.name || '(untitled)', sub: '', haystack });
   });
   ((data.horizons || {}).goals || []).forEach(g => {
     const haystack = [g.title, g.outcome, g.notes].filter(Boolean).join(' ').toLowerCase();
-    records.push({ id: g.id, bucket: 'horizons', typeLabel: 'Goal', title: g.title || '(untitled)', sub: g.timeframe || '', haystack });
+    records.push({ id: g.id, bucket: 'horizons', typeLabel: 'Goal', done: false, title: g.title || '(untitled)', sub: g.timeframe || '', haystack });
   });
   (data.sessionlog || []).forEach(e => {
     const text = e.text || e.note || '';
-    records.push({ id: e.id, bucket: 'sessionlog', typeLabel: 'Session Log', title: text.slice(0, 60) || '(untitled)', sub: e.date || '', haystack: text.toLowerCase() });
+    records.push({ id: e.id, bucket: 'sessionlog', typeLabel: 'Session Log', done: false, title: text.slice(0, 60) || '(untitled)', sub: e.date || '', haystack: text.toLowerCase() });
   });
   (data.people || []).forEach(p => {
     const haystack = [p.name, p.email, p.phone, p.title, p.org, p.notes].filter(Boolean).join(' ').toLowerCase();
     const sub = [p.title, p.org].filter(Boolean).join(' · ');
-    records.push({ id: p.id, bucket: 'people', typeLabel: 'Person', title: p.name || '(unnamed)', sub, haystack });
+    records.push({ id: p.id, bucket: 'people', typeLabel: 'Person', done: false, title: p.name || '(unnamed)', sub, haystack });
   });
   return records;
 }
+
+// Display order for grouped search results — active/actionable types first.
+const SEARCH_TYPE_ORDER = ['Next Action', 'Waiting For', 'Project', 'Person', 'Area of Focus', 'Goal', 'Someday/Maybe', 'Inbox', 'Session Log', 'Item'];
+let globalSearchIncludeDone = false;
+let globalSearchTypeFilter = null; // null = all types; else a Set of typeLabels to include
 
 function toggleGlobalSearch() {
   const panel = document.getElementById('global-search-panel');
@@ -3872,6 +3886,8 @@ function toggleGlobalSearch() {
     const input = document.getElementById('global-search-input');
     if (input) {
       input.value = '';
+      globalSearchIncludeDone = false;
+      globalSearchTypeFilter = null;
       renderGlobalSearchResults();
       setTimeout(() => input.focus(), 30);
     }
@@ -3883,6 +3899,26 @@ function closeGlobalSearch() {
   if (panel) panel.style.display = 'none';
 }
 
+function toggleGlobalSearchDone() {
+  globalSearchIncludeDone = !globalSearchIncludeDone;
+  renderGlobalSearchResults();
+}
+
+function toggleGlobalSearchType(typeLabel) {
+  if (!globalSearchTypeFilter) {
+    // First narrowing click: start from "everything" and remove just this one.
+    globalSearchTypeFilter = new Set(SEARCH_TYPE_ORDER);
+  }
+  if (globalSearchTypeFilter.has(typeLabel)) globalSearchTypeFilter.delete(typeLabel);
+  else globalSearchTypeFilter.add(typeLabel);
+  renderGlobalSearchResults();
+}
+
+function resetGlobalSearchTypeFilter() {
+  globalSearchTypeFilter = null;
+  renderGlobalSearchResults();
+}
+
 function renderGlobalSearchResults() {
   const input = document.getElementById('global-search-input');
   const resultsEl = document.getElementById('global-search-results');
@@ -3892,19 +3928,49 @@ function renderGlobalSearchResults() {
     resultsEl.innerHTML = '<div style="padding:14px;color:var(--muted);font-size:12px;">Type to search projects, actions, waiting-for, goals, areas, people…</div>';
     return;
   }
-  const matches = collectSearchableRecords()
-    .filter(r => r.haystack.includes(q) || r.title.toLowerCase().includes(q))
-    .slice(0, 30);
-  if (!matches.length) {
-    resultsEl.innerHTML = '<div style="padding:14px;color:var(--muted);font-size:12px;">No matches.</div>';
+  const allMatches = collectSearchableRecords().filter(r => r.haystack.includes(q) || r.title.toLowerCase().includes(q));
+  const doneCount = allMatches.filter(r => r.done).length;
+  const typeCounts = {};
+  allMatches.forEach(r => { typeCounts[r.typeLabel] = (typeCounts[r.typeLabel] || 0) + 1; });
+  const presentTypes = SEARCH_TYPE_ORDER.filter(t => typeCounts[t]);
+
+  const visible = allMatches.filter(r => {
+    if (r.done && !globalSearchIncludeDone) return false;
+    if (globalSearchTypeFilter && !globalSearchTypeFilter.has(r.typeLabel)) return false;
+    return true;
+  }).slice(0, 60);
+
+  // Filter bar: per-type toggle chips + a "Done" toggle, only shown when relevant.
+  let filterBar = '';
+  if (presentTypes.length > 1 || doneCount > 0) {
+    const chip = (label, active, onclick, count) => `
+      <span onclick="${onclick}" style="display:inline-block;padding:3px 9px;margin:2px 4px 2px 0;border-radius:999px;font-size:11px;cursor:pointer;border:1px solid var(--border-strong);${active ? 'background:var(--primary);color:#fff;border-color:var(--primary);' : 'background:var(--surface);color:var(--muted);'}">${escapeHtml(label)}${count != null ? ' (' + count + ')' : ''}</span>`;
+    filterBar = '<div style="padding:8px 10px 4px;border-bottom:1px solid var(--border);">' +
+      chip('All types', !globalSearchTypeFilter, 'resetGlobalSearchTypeFilter()') +
+      presentTypes.map(t => chip(t, !globalSearchTypeFilter || globalSearchTypeFilter.has(t), `toggleGlobalSearchType('${escapeHtml(t)}')`, typeCounts[t])).join('') +
+      (doneCount > 0 ? chip(globalSearchIncludeDone ? '✓ Hide done' : '✓ Show done', globalSearchIncludeDone, 'toggleGlobalSearchDone()', doneCount) : '') +
+      '</div>';
+  }
+
+  if (!visible.length) {
+    resultsEl.innerHTML = filterBar + `<div style="padding:14px;color:var(--muted);font-size:12px;">${allMatches.length ? 'No matches with current filters — try "Show done" or "All types" above.' : 'No matches.'}</div>`;
     return;
   }
-  resultsEl.innerHTML = matches.map(m => `
-    <div class="global-search-result" onclick="selectGlobalSearchResult('${escapeHtml(m.id)}')" style="padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer;">
-      <div style="font-size:13px;font-weight:500;">${escapeHtml(m.title)}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:2px;">${escapeHtml(m.typeLabel)}${m.sub ? ' · ' + escapeHtml(m.sub) : ''} · #${escapeHtml(m.id)}</div>
-    </div>
-  `).join('');
+
+  // Group by type, in a sensible fixed order, active items naturally first
+  // since we render whichever types are present in SEARCH_TYPE_ORDER's sequence.
+  const groups = {};
+  visible.forEach(r => { (groups[r.typeLabel] = groups[r.typeLabel] || []).push(r); });
+  const html = SEARCH_TYPE_ORDER.filter(t => groups[t]).map(typeLabel => {
+    const rows = groups[typeLabel].map(m => `
+      <div class="global-search-result" onclick="selectGlobalSearchResult('${escapeHtml(m.id)}')" style="padding:7px 12px;border-bottom:1px solid var(--border);cursor:pointer;${m.done ? 'opacity:0.6;' : ''}">
+        <div style="font-size:13px;font-weight:500;">${escapeHtml(m.title)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${m.sub ? escapeHtml(m.sub) + ' · ' : ''}#${escapeHtml(m.id)}</div>
+      </div>
+    `).join('');
+    return `<div style="padding:6px 12px 2px;font-size:11px;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;color:var(--muted);background:var(--bg,#f7f7f8);position:sticky;top:0;">${escapeHtml(typeLabel)}</div>${rows}`;
+  }).join('');
+  resultsEl.innerHTML = filterBar + html;
 }
 
 function selectGlobalSearchResult(id) {
