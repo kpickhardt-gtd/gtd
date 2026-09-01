@@ -1205,6 +1205,7 @@
       <span id="cloud-sync-status" class="cloud-sync-indicator status-init">⋯ Initializing</span>
       <button id="reconnect-drive-btn" onclick="connectGoogleDrive()" title="Reconnect to Google Drive" style="font-size:11px;padding:3px 10px;border:1px solid var(--border-strong);background:var(--surface);border-radius:5px;cursor:pointer;color:var(--text);">🔗 Reconnect Drive</button>
     </div>
+    <div id="app-build-label" style="margin-top:2px;font-size:10px;color:var(--muted);"></div>
   </div>
   <div class="quick-capture">
     <input type="text" id="quickCaptureInput" placeholder="Brain-dump straight to Inbox… (Enter to save)" />
@@ -1906,6 +1907,9 @@
 // =================================================================
 // DATA MODEL & STORAGE
 // =================================================================
+// Bump this on every shipped change so the header shows which version is live.
+// Format: YYYY-MM-DD.<short description of the change>
+const APP_BUILD = '2026-08-17.search-filters-quickadd-buildlabel';
 const STORAGE_KEY = 'kevin-gtd-v1';
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
@@ -7307,6 +7311,9 @@ async function bootstrap() {
     restoreTab();
   }
 }
+
+const buildLabelEl = document.getElementById('app-build-label');
+if (buildLabelEl) buildLabelEl.textContent = 'Build ' + APP_BUILD;
 
 bootstrap();
 
