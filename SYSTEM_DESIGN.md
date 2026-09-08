@@ -297,7 +297,7 @@ Every action and project card renders `renderStatusDropdown(item)` which produce
 | `brand.js` | Visual constants | Same folder |
 | `help.json` | Help docs | Same folder |
 | `gtd-cloud-state.json` | User's live data | NOT in the repo — lives in Google Drive folder via Drive API |
-| Local cloud-state copy (legacy) | OneDrive snapshot — kept as belt-and-suspenders backup | `C:\Users\kpickhardt\OneDrive...\Task Management\Kevins GTD Task List\gtd-cloud-state.json` |
+| Local cloud-state copy (legacy, deprecated 2026-09-08) | OneDrive snapshot — was kept as belt-and-suspenders backup, but the scheduled task that refreshed it was deleted 2026-09-08. It had gone stale since the Google Drive migration (savedAt frozen at 2026-06-09) and shouldn't be treated as a backup source. | `C:\Users\kpickhardt\OneDrive...\Task Management\Kevins GTD Task List\gtd-cloud-state.json` |
 
 ## 9. Working in this codebase (for future AI sessions)
 
@@ -368,6 +368,16 @@ If a sender / participant clearly represents a person Kevin should track (repeat
 ### Auto-tagging in progress notes
 
 If a scan adds a note to an existing item (not a new one), still resolve the sender to a `personId` and mention them in the note text (e.g., "Katie Engel forwarded update on Q3 offsite" rather than "Someone forwarded update"). This gives future scans context for matching.
+
+## 10.6 Backup strategy (rewritten 2026-09-08)
+
+`runDriveBackups()` writes a rolling snapshot of `gtd-cloud-state.json` into the same Drive folder on every `saveToDrive()`, throttled to at most once per `BACKUP_MIN_INTERVAL_MS` (30 min).
+
+**Naming.** Each snapshot gets a unique, timestamped name: `gtd-backup-YYYY-MM-DD-HHMM.json` (local time, via `backupTimestampSuffix()`). This replaced a fixed four-file scheme (`gtd-backup-30min.json` / `-1hr` / `-1day` / `-1week`, each overwritten in place using a Drive file ID cached in `localStorage`). That scheme silently forked into duplicate Drive files whenever `localStorage` lost track of an ID — different browser, new machine, cleared cache — because Drive allows multiple files with the same name and nothing ever cleaned up the orphan. By the time this was found (2026-09-08), each tier had ~5 duplicate files sitting in Drive with no way to tell which was "current" without opening them, and Google Drive Desktop was appending `(1)`, `(2)`, etc. to the local mirror to avoid filesystem collisions.
+
+**Retention.** After writing a new snapshot, `pruneBackupList()` lists every `gtd-backup-*` file in the folder (via `gdriveListFiles()`, reading Drive's own `createdTime` — nothing tracked locally) and deletes anything outside a tiered retention window, same shape as the old OneDrive backup task's scheme: keep all from the last 4h, hourly for 4-24h, daily for 1-7d, weekly for 7-28d, monthly beyond that. Deletion uses `gdriveDeleteFile()` (Drive API, the user's own OAuth token — no permission issues like the old OneDrive-mounted-folder pruning had).
+
+**Not covered.** This only runs when the browser app itself calls `saveToDrive()`. Edits written directly to `gtd-cloud-state.json` by a Claude session (bypassing the app) don't trigger a backup — the next time the app itself saves, a backup will capture whatever the file contains at that moment, so there can be a gap between an external edit and its first backup.
 
 ## 11. Future work — known opportunities
 
