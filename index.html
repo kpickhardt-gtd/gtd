@@ -1275,11 +1275,11 @@
       <h2>☀️ Morning Brief</h2>
     </div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">
-      Loads <code>morning-brief.html</code> from your <code>Kevin GTD Tasks</code> folder. Your Apps Script (or local routine) should save each day's brief there.
-      If nothing shows below, that file isn't in the folder yet —
+      Loads <code>morning-brief.html</code> from this same GitHub repo (same folder as <code>index.html</code>). Your Apps Script pushes it there via the GitHub API — a local Drive-only save won't reach this GitHub Pages site.
+      If nothing shows below, that file hasn't been pushed to the repo yet —
       <a href="#" onclick="window.open('https://claude.ai/artifact/BAn4zsi835C2eLk84WMpuc','_blank');return false;">open the latest brief in a new tab instead</a>.
     </div>
-    <iframe id="morning-brief-frame" src="../../Kevin%20GTD%20Tasks/morning-brief.html" title="Morning Brief" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" style="width:100%;height:75vh;border:1px solid var(--border-strong);border-radius:8px;background:#fff;"></iframe>
+    <iframe id="morning-brief-frame" src="morning-brief.html" title="Morning Brief" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" style="width:100%;height:75vh;border:1px solid var(--border-strong);border-radius:8px;background:#fff;"></iframe>
   </section>
 
   <section class="section active" id="section-dashboard">
@@ -1922,7 +1922,7 @@
 // =================================================================
 // Bump this on every shipped change so the header shows which version is live.
 // Format: YYYY-MM-DD.<short description of the change>
-const APP_BUILD = '2026-09-28.01';
+const APP_BUILD = '2026-09-28.02';
 const STORAGE_KEY = 'kevin-gtd-v1';
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
