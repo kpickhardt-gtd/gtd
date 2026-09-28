@@ -1248,6 +1248,7 @@
 
 <nav id="nav">
   <div class="nav-section-label">Capture</div>
+  <button data-tab="briefing">☀️ Morning Brief</button>
   <button data-tab="dashboard" class="active">Dashboard</button>
   <button data-tab="focus"><span>Focus</span> <span class="count" id="count-focus">0</span></button>
   <button data-tab="inbox"><span>Inbox</span> <span class="count" id="count-inbox">0</span></button>
@@ -1269,6 +1270,18 @@
 <main>
 
   <!-- ========== DASHBOARD ========== -->
+  <section class="section" id="section-briefing">
+    <div class="section-header">
+      <h2>☀️ Morning Brief</h2>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+      Loads <code>morning-brief.html</code> from this same folder. Save each day's brief there (same way you place <code>index.html</code>) to keep this current.
+      If nothing shows below, that file isn't in the folder yet —
+      <a href="#" onclick="window.open('https://claude.ai/artifact/BAn4zsi835C2eLk84WMpuc','_blank');return false;">open the latest brief in a new tab instead</a>.
+    </div>
+    <iframe id="morning-brief-frame" src="morning-brief.html" title="Morning Brief" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" style="width:100%;height:75vh;border:1px solid var(--border-strong);border-radius:8px;background:#fff;"></iframe>
+  </section>
+
   <section class="section active" id="section-dashboard">
     <div class="section-header">
       <div>
@@ -1909,7 +1922,7 @@
 // =================================================================
 // Bump this on every shipped change so the header shows which version is live.
 // Format: YYYY-MM-DD.<short description of the change>
-const APP_BUILD = '2026-09-08.drive-backup-naming-retention-rewrite';
+const APP_BUILD = '2026-08-17.02';
 const STORAGE_KEY = 'kevin-gtd-v1';
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
@@ -3061,25 +3074,6 @@ async function gdriveFindFile(folderId, filename) {
   return json.files?.[0] || null;
 }
 
-// List files in a Drive folder whose name starts with a prefix (used for
-// backup retention — lets us make delete/keep decisions off Drive's own
-// createdTime instead of anything tracked locally).
-async function gdriveListFiles(folderId, namePrefix) {
-  const q = `name contains '${namePrefix}' and '${folderId}' in parents and trashed=false`;
-  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,createdTime)&orderBy=createdTime desc&pageSize=1000&spaces=drive`;
-  const resp = await gdriveFetch(url);
-  if (!resp.ok) throw new Error('Drive list failed: ' + resp.status);
-  const json = await resp.json();
-  // "contains" is a substring match server-side; enforce prefix client-side.
-  return (json.files || []).filter(f => f.name.startsWith(namePrefix));
-}
-
-// Permanently delete a Drive file (used for backup retention pruning).
-async function gdriveDeleteFile(fileId) {
-  const resp = await gdriveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, { method: 'DELETE' });
-  if (!resp.ok && resp.status !== 404) throw new Error('Drive delete failed: ' + resp.status);
-}
-
 // Read a Drive file's text content
 async function gdriveReadFile(fileId) {
   const resp = await gdriveFetch(
@@ -3120,76 +3114,33 @@ async function gdriveCreateFile(folderId, filename, content) {
   return (await resp.json()).id;
 }
 
-// Rolling backups: one uniquely-named, timestamped snapshot per interval,
-// with tiered retention pruning so the folder doesn't grow forever.
-//
-// Replaces the old fixed-slot scheme (gtd-backup-30min.json / -1hr / -1day
-// / -1week, each overwritten in place via a Drive file ID cached in
-// localStorage). That scheme silently forked into duplicate Drive files
-// whenever localStorage lost track of an ID — a different browser, a new
-// machine, a cleared cache — because Drive allows multiple files with the
-// same name; nothing ever deleted the orphaned copy. By 2026-09-08 that had
-// piled up into ~5 duplicate files per tier with no cleanup.
-//
-// This version needs nothing tracked locally to decide what's safe to
-// delete: every backup gets a unique name, and retention reads Drive's own
-// createdTime off a folder listing each time it runs.
-const BACKUP_FILE_PREFIX = 'gtd-backup-';
-const BACKUP_MIN_INTERVAL_MS = 30 * 60 * 1000; // new snapshot at most every 30 min
-const BACKUP_LAST_RUN_KEY = STORAGE_KEY + ':lastDriveBackupAt';
-
-// Tiered retention, same shape as the old OneDrive backup task's scheme
-// (all last 4h, hourly 4-24h, daily 1-7d, weekly 7-28d, monthly beyond) —
-// keep everything inside `withinMs`, then keep at most one snapshot per
-// `bucketMs` beyond that.
-const BACKUP_RETENTION_TIERS = [
-  { withinMs: 4  * 60 * 60 * 1000,      bucketMs: 0 },                        // last 4h: keep all
-  { withinMs: 24 * 60 * 60 * 1000,      bucketMs: 60 * 60 * 1000 },           // 4-24h: hourly
-  { withinMs: 7  * 24 * 60 * 60 * 1000, bucketMs: 24 * 60 * 60 * 1000 },      // 1-7d: daily
-  { withinMs: 28 * 24 * 60 * 60 * 1000, bucketMs: 7 * 24 * 60 * 60 * 1000 },  // 7-28d: weekly
-  { withinMs: Infinity,                 bucketMs: 30 * 24 * 60 * 60 * 1000 }, // beyond: monthly
+// Rolling backup schedule: 30 min, 1 hr, 1 day, 1 week
+const BACKUP_SCHEDULES = [
+  { name: '30min', filename: 'gtd-backup-30min.json',  intervalMs: 30 * 60 * 1000 },
+  { name: '1hr',   filename: 'gtd-backup-1hr.json',    intervalMs: 60 * 60 * 1000 },
+  { name: '1day',  filename: 'gtd-backup-1day.json',   intervalMs: 24 * 60 * 60 * 1000 },
+  { name: '1week', filename: 'gtd-backup-1week.json',  intervalMs: 7 * 24 * 60 * 60 * 1000 },
 ];
 
-function backupTimestampSuffix(d) {
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
-}
-
-// Given Drive-listed backup files ({id, name, createdTime}), return the ones
-// that fall outside the retention scheme and should be deleted. Newest file
-// in each bucket wins; older ones in the same bucket are pruned.
-function pruneBackupList(files, now = Date.now()) {
-  const sorted = [...files].sort((a, b) => new Date(b.createdTime) - new Date(a.createdTime));
-  const seenBuckets = new Set();
-  const toDelete = [];
-  for (const f of sorted) {
-    const age = now - new Date(f.createdTime).getTime();
-    const tier = BACKUP_RETENTION_TIERS.find(t => age <= t.withinMs);
-    if (!tier || tier.bucketMs === 0) continue; // inside the "keep all" window
-    const bucketKey = tier.bucketMs + ':' + Math.floor(age / tier.bucketMs);
-    if (seenBuckets.has(bucketKey)) toDelete.push(f);
-    else seenBuckets.add(bucketKey);
-  }
-  return toDelete;
-}
-
+// Time-based rolling backups — same schedule as FSA version but writes to Drive
 async function runDriveBackups(stateJson) {
   if (!gdriveFolderId || !gdriveToken) return;
   const now = Date.now();
-  if (now - parseInt(localStorage.getItem(BACKUP_LAST_RUN_KEY) || '0', 10) < BACKUP_MIN_INTERVAL_MS) return;
-  try {
-    const filename = BACKUP_FILE_PREFIX + backupTimestampSuffix(new Date(now)) + '.json';
-    await gdriveCreateFile(gdriveFolderId, filename, stateJson);
-    localStorage.setItem(BACKUP_LAST_RUN_KEY, now.toString());
-  } catch(e) { console.warn('Drive backup failed:', e.message); return; }
-  try {
-    const files = await gdriveListFiles(gdriveFolderId, BACKUP_FILE_PREFIX);
-    const stale = pruneBackupList(files, now);
-    for (const f of stale) {
-      try { await gdriveDeleteFile(f.id); }
-      catch(e) { console.warn('Drive backup prune failed:', f.name, e.message); }
-    }
-  } catch(e) { console.warn('Drive backup prune listing failed:', e.message); }
+  for (const tier of BACKUP_SCHEDULES) {
+    const lastRunKey = STORAGE_KEY + ':backup:' + tier.name;
+    if (now - parseInt(localStorage.getItem(lastRunKey) || '0', 10) < tier.intervalMs) continue;
+    try {
+      const idKey = STORAGE_KEY + ':gdriveBackupId:' + tier.name;
+      let bid = localStorage.getItem(idKey);
+      if (bid) {
+        await gdriveWriteFile(bid, stateJson);
+      } else {
+        bid = await gdriveCreateFile(gdriveFolderId, tier.filename, stateJson);
+        localStorage.setItem(idKey, bid);
+      }
+      localStorage.setItem(lastRunKey, now.toString());
+    } catch(e) { console.warn('Drive backup failed:', tier.filename, e.message); }
+  }
 }
 
 // Save current data to Drive
@@ -3613,7 +3564,7 @@ async function disconnectCloudFolder() {
     gdriveFileId = null; gdriveFolderId = null; gdriveToken = null;
     localStorage.removeItem(GDRIVE_FILE_ID_KEY);
     localStorage.removeItem(GDRIVE_FOLDER_ID_KEY);
-    localStorage.removeItem(BACKUP_LAST_RUN_KEY);
+    BACKUP_SCHEDULES.forEach(t => localStorage.removeItem(STORAGE_KEY + ':gdriveBackupId:' + t.name));
   }
   cloudFolderHandle = null;
   setCloudFolderName(null);
