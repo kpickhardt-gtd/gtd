@@ -1275,9 +1275,9 @@
       <h2>☀️ Morning Brief</h2>
     </div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">
-      Loads <code>morning-brief.html</code> from this same GitHub repo (same folder as <code>index.html</code>). Your Apps Script pushes it there via the GitHub API — a local Drive-only save won't reach this GitHub Pages site.
-      If nothing shows below, that file hasn't been pushed to the repo yet —
-      <a href="#" onclick="window.open('https://claude.ai/artifact/BAn4zsi835C2eLk84WMpuc','_blank');return false;">open the latest brief in a new tab instead</a>.
+      <a href="#" onclick="window.open('morning-brief.html?t=' + Date.now(), '_blank');return false;">Open in a new tab</a>
+      &nbsp;·&nbsp;
+      <a href="#" onclick="openHelp('morning-brief');return false;">How this works</a>
     </div>
     <iframe id="morning-brief-frame" src="morning-brief.html" title="Morning Brief" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" style="width:100%;height:75vh;border:1px solid var(--border-strong);border-radius:8px;background:#fff;"></iframe>
   </section>
@@ -1922,7 +1922,7 @@
 // =================================================================
 // Bump this on every shipped change so the header shows which version is live.
 // Format: YYYY-MM-DD.<short description of the change>
-const APP_BUILD = '2026-09-28.03';
+const APP_BUILD = '2026-09-29.01';
 const STORAGE_KEY = 'kevin-gtd-v1';
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
@@ -2156,6 +2156,31 @@ const HELP_DOCS_FALLBACK = [
 </ul>
 <h3>Waiting For → Next Action round-trip</h3>
 <p>When a Waiting For item is resolved, you can convert it back to a Next Action directly from the list. The conversion preserves provenance notes so you know where the action came from.</p>
+    `
+  },
+  {
+    id: 'morning-brief',
+    title: 'Morning Brief',
+    updated: 'September 2026',
+    body: `
+<h2>Morning Brief</h2>
+<p class="help-subtitle">How the ☀️ Morning Brief tab stays current, and what to check if it doesn't.</p>
+<p>The Morning Brief tab shows a daily AI-generated briefing (calendar, email, and chat context) inline, without leaving the GTD system. It's a separate pipeline from the rest of the app's data — here's how it works.</p>
+<h3>The pipeline</h3>
+<ol>
+  <li>A scheduled local routine generates the brief each morning and saves it as <code>morning-brief.html</code> directly into the <strong>Kevin GTD Tasks</strong> Google Drive folder — a plain local file save, no network call.</li>
+  <li>A Google Apps Script trigger polls that folder every few minutes. When it detects the file changed, it pushes the new content to the <code>kpickhardt-gtd/gtd</code> GitHub repo automatically via the GitHub API.</li>
+  <li>Since the GTD app itself is hosted on GitHub Pages from that same repo, the Morning Brief tab loads <code>morning-brief.html</code> as a same-origin file — no cross-site restrictions, no separate publishing step.</li>
+</ol>
+<h3>Cache-busting</h3>
+<p>Every time you open the tab, the app reloads the frame with a fresh, uniquely-timestamped URL. This defeats normal browser/CDN caching so you always see the latest push rather than a stale cached copy from an earlier visit.</p>
+<h3>If it looks stale or empty</h3>
+<ul>
+  <li>Confirm the local routine actually ran this morning (check the computer it's scheduled on was awake with Claude Desktop open).</li>
+  <li>Check the Apps Script project's <strong>Executions</strong> log for the polling trigger — a failed run there means the GitHub push didn't happen.</li>
+  <li>Check the <code>kpickhardt-gtd/gtd</code> repo directly on GitHub — does <code>morning-brief.html</code> show today's commit?</li>
+  <li>GitHub Pages can take 30–90 seconds to rebuild after a push — give it a moment before assuming something's broken.</li>
+</ul>
     `
   },
   {
@@ -2956,6 +2981,7 @@ const GDRIVE_FOLDER_ID_KEY= STORAGE_KEY + ':gdriveFolderId';
 
 let gdriveToken       = null;
 let gdriveTokenClient = null;
+let gdriveRefreshTimer = null;
 let gdriveFileId      = localStorage.getItem(GDRIVE_FILE_ID_KEY)   || null;
 let gdriveFolderId    = localStorage.getItem(GDRIVE_FOLDER_ID_KEY) || null;
 let driveSyncActive   = !!gdriveFileId;
@@ -2999,10 +3025,36 @@ async function gdriveGetToken(interactive = true) {
       if (timer) clearTimeout(timer);
       if (resp.error) { reject(new Error(resp.error_description || resp.error)); return; }
       gdriveToken = resp.access_token;
+      scheduleGdriveTokenRefresh(resp.expires_in);
       resolve(resp.access_token);
     };
     gdriveTokenClient.requestAccessToken({ prompt: interactive ? 'select_account' : '' });
   });
+}
+
+// Google's access tokens from this flow are short-lived (typically ~1 hour)
+// and this flow never issues a refresh token -- that's a Google platform
+// limit for security reasons, not something this app can configure around
+// without adding a backend server. What we CAN do: refresh quietly in the
+// background well before it actually expires, instead of waiting for a
+// request to fail first. This won't eliminate reconnects (silent refresh
+// can still fail if the browser blocks third-party cookies/storage, or the
+// tab was closed and reopened), but it should make expiration a non-event
+// during active use rather than something you notice mid-task.
+function scheduleGdriveTokenRefresh(expiresInSeconds) {
+  if (gdriveRefreshTimer) clearTimeout(gdriveRefreshTimer);
+  if (!expiresInSeconds) return;
+  // Refresh 5 minutes before actual expiry, with a sane floor so we don't
+  // schedule something in the past if Google ever returns a short value.
+  const refreshInMs = Math.max((expiresInSeconds - 300), 30) * 1000;
+  gdriveRefreshTimer = setTimeout(() => {
+    gdriveGetToken(false).catch(() => {
+      // Silent refresh failed (e.g. third-party cookies blocked, session
+      // ended). Leave gdriveToken as-is; the next real request will hit a
+      // 401, trigger the existing reactive retry, and if that also fails,
+      // the UI's normal "reconnect" flow takes over as before.
+    });
+  }, refreshInMs);
 }
 
 // Fetch wrapper with automatic token refresh on 401
@@ -3562,6 +3614,7 @@ async function disconnectCloudFolder() {
   if (driveSyncActive) {
     driveSyncActive = false;
     gdriveFileId = null; gdriveFolderId = null; gdriveToken = null;
+    if (gdriveRefreshTimer) { clearTimeout(gdriveRefreshTimer); gdriveRefreshTimer = null; }
     localStorage.removeItem(GDRIVE_FILE_ID_KEY);
     localStorage.removeItem(GDRIVE_FOLDER_ID_KEY);
     BACKUP_SCHEDULES.forEach(t => localStorage.removeItem(STORAGE_KEY + ':gdriveBackupId:' + t.name));
