@@ -1922,7 +1922,7 @@
 // =================================================================
 // Bump this on every shipped change so the header shows which version is live.
 // Format: YYYY-MM-DD.<short description of the change>
-const APP_BUILD = '2026-09-28.02';
+const APP_BUILD = '2026-09-28.03';
 const STORAGE_KEY = 'kevin-gtd-v1';
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
@@ -3751,8 +3751,18 @@ document.querySelectorAll('nav button').forEach(btn => {
     // Keep the shared "next" form visible with the tab if it's open and the
     // user hops between Next Actions and Focus (both show "next" items).
     if (tab === 'next' || tab === 'focus') relocateNextForm();
+    // The Morning Brief iframe only loads once by default -- switching tabs
+    // is just a CSS show/hide, it never re-fetches. Force a fresh load with
+    // a cache-busting query param every time this tab is opened, since
+    // browsers and GitHub's CDN otherwise happily serve yesterday's cached copy.
+    if (tab === 'briefing') refreshMorningBrief();
   });
 });
+
+function refreshMorningBrief() {
+  const frame = document.getElementById('morning-brief-frame');
+  if (frame) frame.src = 'morning-brief.html?t=' + Date.now();
+}
 
 function restoreTab() {
   const last = localStorage.getItem(STORAGE_KEY + ':lastTab');
