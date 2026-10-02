@@ -993,6 +993,24 @@
     #mobile-home-btn { display: flex !important; }
     #mobile-menu-btn { display: flex !important; }
 
+    /* Quick-add and search move into the "More" drawer on mobile -- the
+       header has no room for a text button + an icon button alongside
+       home/menu/help. Only hide the trigger buttons (not their wrapper
+       divs), since the popup elements below still need to exist in the
+       DOM and be toggleable from the drawer's own buttons. */
+    #quick-add-btn, #global-search-btn { display: none !important; }
+    /* Center these as a fixed overlay instead of a small anchored dropdown,
+       since on mobile they're opened from the drawer (bottom of screen),
+       not from a button near where the popup would otherwise anchor. */
+    #quick-add-menu, #global-search-panel {
+      position: fixed !important;
+      top: 50% !important; left: 50% !important; right: auto !important;
+      transform: translate(-50%, -50%);
+      width: 90vw !important; max-width: 420px;
+      max-height: 80vh !important;
+      z-index: 2000 !important;
+    }
+
     /* Header: row 1 = title + buttons, row 2 = capture */
     header {
       display: grid;
@@ -1218,6 +1236,7 @@
         <div class="quick-add-option" onclick="quickAddOpen('project')" style="padding:9px 14px;cursor:pointer;font-size:13px;">📁 Project</div>
         <div class="quick-add-option" onclick="quickAddOpen('next')" style="padding:9px 14px;cursor:pointer;font-size:13px;border-top:1px solid var(--border);">✅ Next Action</div>
         <div class="quick-add-option" onclick="quickAddOpen('person')" style="padding:9px 14px;cursor:pointer;font-size:13px;border-top:1px solid var(--border);">👤 Person</div>
+        <div class="quick-add-option" onclick="quickAddOpen('timeentry')" style="padding:9px 14px;cursor:pointer;font-size:13px;border-top:1px solid var(--border);">⏱ Time Entry</div>
       </div>
     </div>
     <div id="global-search-wrap" style="position:relative;">
@@ -1262,6 +1281,7 @@
   <button data-tab="horizons">Goals &amp; Horizons</button>
   <button data-tab="areas">Areas of Focus</button>
   <button data-tab="people"><span>People</span> <span class="count" id="count-people">0</span></button>
+  <button data-tab="timeentries"><span>⏱ Time Entries</span> <span class="count" id="count-timeentries">0</span></button>
   <div class="nav-section-label">Reflect</div>
   <button data-tab="sessionlog"><span>Session Log</span> <span class="count" id="count-sessionlog">0</span></button>
   <button data-tab="review">Review</button>
@@ -1412,6 +1432,11 @@
           <option value="">— No project —</option>
         </select>
       </div>
+      <div class="form-row">
+        <select id="next-client" title="Client (optional) — auto-filled from the project's client, but you can override it">
+          <option value="">— Client (optional) —</option>
+        </select>
+      </div>
       <div id="new-project-inline" style="display:none;margin:4px 0 8px;padding:10px 12px;background:var(--surface-raised,#f9fafb);border:1px solid var(--border-strong);border-radius:8px;">
         <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;">New project</div>
         <div class="form-row">
@@ -1492,11 +1517,16 @@
           <option value="completed">Completed</option>
         </select>
       </div>
-      <select id="project-priority">
-        <option value="med">Priority: Medium</option>
-        <option value="high">Priority: High</option>
-        <option value="low">Priority: Low</option>
-      </select>
+      <div class="form-row">
+        <select id="project-priority">
+          <option value="med">Priority: Medium</option>
+          <option value="high">Priority: High</option>
+          <option value="low">Priority: Low</option>
+        </select>
+        <select id="project-client" title="Client (optional) — actions created under this project will inherit this client automatically">
+          <option value="">— Client (optional) —</option>
+        </select>
+      </div>
       <textarea id="project-notes" placeholder="Notes, links, context (optional)" rows="2"></textarea>
       <div class="person-picker-wrapper">
         <label>People (optional) — actions on this project can inherit these later</label>
@@ -1687,6 +1717,73 @@
     </div>
     <div id="people-filter-row" style="display:flex;gap:8px;align-items:center;margin-bottom:12px;font-size:13px;flex-wrap:wrap;"></div>
     <div id="list-people"></div>
+  </section>
+
+  <!-- ========== TIME ENTRIES (billable work) ========== -->
+  <section class="section" id="section-timeentries">
+    <div class="section-header">
+      <div>
+        <h2>⏱ Time Entries</h2>
+        <div class="blurb">Billable time logged against clients, optionally tied to a project and action. Filter below for invoicing.</div>
+      </div>
+      <button class="btn" onclick="toggleForm('timeentries')">+ Time Entry</button>
+    </div>
+
+    <details id="te-clients-panel" style="margin-bottom:14px;border:1px solid var(--border-strong);border-radius:8px;padding:10px 14px;">
+      <summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);">👥 Manage Clients</summary>
+      <div style="margin-top:10px;">
+        <div class="form-row">
+          <input type="text" id="te-new-client-name" placeholder="Client name" onkeydown="if(event.key==='Enter')addClient()" />
+          <button class="btn" onclick="addClient()">+ Add Client</button>
+        </div>
+        <div id="te-clients-list" style="margin-top:10px;"></div>
+      </div>
+    </details>
+
+    <div class="add-form" id="form-timeentries">
+      <div class="form-row">
+        <input type="date" id="te-date" title="Date work was performed" />
+        <select id="te-client">
+          <option value="">— Client (optional) —</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <select id="te-project" onchange="handleTeProjectChange(this)">
+          <option value="">— No project —</option>
+        </select>
+        <select id="te-action" onchange="handleTeActionChange(this)">
+          <option value="">— No action —</option>
+        </select>
+      </div>
+      <div class="form-row" style="align-items:center;gap:16px;">
+        <label style="font-size:13px;display:flex;align-items:center;gap:4px;"><input type="radio" name="te-mode" value="range" onchange="toggleTeMode('range')" /> Clock times</label>
+        <label style="font-size:13px;display:flex;align-items:center;gap:4px;"><input type="radio" name="te-mode" value="duration" checked onchange="toggleTeMode('duration')" /> Duration</label>
+      </div>
+      <div class="form-row" id="te-range-row" style="display:none;">
+        <input type="time" id="te-start" onchange="recalcTeRangeHours()" />
+        <input type="time" id="te-end" onchange="recalcTeRangeHours()" />
+        <span id="te-range-hours-display" style="font-size:13px;color:var(--muted);align-self:center;"></span>
+      </div>
+      <div class="form-row" id="te-duration-row">
+        <input type="number" id="te-duration" placeholder="Hours (e.g. 2.5)" step="0.1" min="0" />
+      </div>
+      <textarea id="te-description" placeholder="Description of work done" rows="2"></textarea>
+      <div class="form-row">
+        <select id="te-billing">
+          <option value="unbilled">Unbilled</option>
+          <option value="invoiced">Invoiced</option>
+          <option value="paid">Paid</option>
+        </select>
+      </div>
+      <div class="form-actions">
+        <button class="btn secondary" onclick="toggleForm('timeentries')">Cancel</button>
+        <button class="btn" onclick="saveTimeEntry()">Add</button>
+      </div>
+    </div>
+
+    <div id="te-filter-row" style="display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:13px;flex-wrap:wrap;"></div>
+    <div id="te-summary-line" style="font-size:13px;color:var(--muted);margin-bottom:10px;"></div>
+    <div id="list-timeentries"></div>
   </section>
 
   <section class="section" id="section-horizons">
@@ -1922,7 +2019,7 @@
 // =================================================================
 // Bump this on every shipped change so the header shows which version is live.
 // Format: YYYY-MM-DD.<short description of the change>
-const APP_BUILD = '2026-09-29.01';
+const APP_BUILD = '2026-10-01.01';
 const STORAGE_KEY = 'kevin-gtd-v1';
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
@@ -1930,6 +2027,8 @@ const DEFAULT_DATA = {
   items: [],
   areas: [],
   people: [],
+  clients: [],
+  timeentries: [],
   nextIdCounters: {},
   reviewState: { daily: {}, weekly: {}, monthly: {} },
   horizons: {},
@@ -2547,6 +2646,7 @@ function addItemToBucket(bucket, fields) {
     completed: f.completed || null,
     priority: f.priority || 'med',
     projectId: f.projectId || null,
+    clientId: f.clientId || null,
     areaId,
     dueDate,
     scheduledAt: f.scheduledAt || null,
@@ -3853,6 +3953,10 @@ function resolveItemLocation(id) {
   if (log) return { bucket: 'sessionlog', record: log };
   const person = (data.people || []).find(x => x.id === id);
   if (person) return { bucket: 'people', record: person };
+  const entry = (data.timeentries || []).find(x => x.id === id);
+  if (entry) return { bucket: 'timeentries', record: entry };
+  const client = (data.clients || []).find(x => x.id === id);
+  if (client) return { bucket: 'timeentries', record: client };
   return null;
 }
 
@@ -3892,6 +3996,11 @@ function focusItem(id) {
     }
     if (target) {
       if (target.tagName === 'DETAILS') target.open = true;
+      // Open any ancestor collapsible panel too (e.g. a client row nested
+      // inside the collapsed "Manage Clients" <details>), or it'd highlight
+      // something the user can't actually see.
+      let anc = target.parentElement;
+      while (anc) { if (anc.tagName === 'DETAILS') anc.open = true; anc = anc.parentElement; }
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
       target.classList.add('focused-highlight');
       setTimeout(() => target.classList.remove('focused-highlight'), 2000);
@@ -3949,11 +4058,25 @@ function collectSearchableRecords() {
     const sub = [p.title, p.org].filter(Boolean).join(' · ');
     records.push({ id: p.id, bucket: 'people', typeLabel: 'Person', done: false, title: p.name || '(unnamed)', sub, haystack });
   });
+  (data.clients || []).forEach(c => {
+    const haystack = [c.name].filter(Boolean).join(' ').toLowerCase();
+    records.push({ id: c.id, bucket: 'timeentries', typeLabel: 'Client', done: c.active === false, title: c.name || '(unnamed)', sub: c.active === false ? 'inactive' : '', haystack });
+  });
+  (data.timeentries || []).forEach(e => {
+    const client = (data.clients || []).find(c => c.id === e.clientId);
+    const project = e.projectId ? projectsById[e.projectId] : null;
+    const haystack = [e.description, client && client.name, project && (project.text || project.title)].filter(Boolean).join(' ').toLowerCase();
+    const subParts = [];
+    if (client) subParts.push(client.name);
+    if (project) subParts.push('↳ ' + (project.text || project.title || '').slice(0, 40));
+    subParts.push((e.hours != null ? e.hours.toFixed(2) : '?') + ' hrs');
+    records.push({ id: e.id, bucket: 'timeentries', typeLabel: 'Time Entry', done: e.billingStatus === 'paid', title: (e.description || '(no description)').slice(0, 60), sub: subParts.join(' · '), haystack });
+  });
   return records;
 }
 
 // Display order for grouped search results — active/actionable types first.
-const SEARCH_TYPE_ORDER = ['Next Action', 'Waiting For', 'Project', 'Person', 'Area of Focus', 'Goal', 'Someday/Maybe', 'Inbox', 'Session Log', 'Item'];
+const SEARCH_TYPE_ORDER = ['Next Action', 'Waiting For', 'Project', 'Person', 'Time Entry', 'Client', 'Area of Focus', 'Goal', 'Someday/Maybe', 'Inbox', 'Session Log', 'Item'];
 let globalSearchIncludeDone = false;
 let globalSearchTypeFilter = null; // null = all types; else a Set of typeLabels to include
 
@@ -4118,6 +4241,15 @@ function quickAddOpen(kind) {
     const btn = document.querySelector('nav button[data-tab="people"]');
     if (btn) btn.click();
     setTimeout(() => { addPerson(); }, 60);
+  } else if (kind === 'timeentry') {
+    const btn = document.querySelector('nav button[data-tab="timeentries"]');
+    if (btn) btn.click();
+    setTimeout(() => {
+      const f = document.getElementById('form-timeentries');
+      if (f && !f.classList.contains('open')) toggleForm('timeentries');
+      const el = document.getElementById('te-date');
+      if (el) { if (!el.value) el.value = new Date().toISOString().slice(0, 10); el.focus(); }
+    }, 60);
   }
 }
 
@@ -4138,6 +4270,7 @@ function render() {
   renderFocus();
   renderAreas();
   renderPeople();
+  renderTimeEntries();
   ['inbox','next','projects','waiting'].forEach(b => {
     const el = document.querySelector(`.person-picker[data-picker="${b}"]`);
     if (el && !el.querySelector('.picker-add')) renderPersonPicker(b);
@@ -4147,6 +4280,7 @@ function render() {
   renderReview();
   populateProjectSelects();
   populateAreaSelects();
+  populateClientSelects();
   renderImportPreview();
   updateSaveButtonLabels();
 }
@@ -4172,6 +4306,8 @@ function renderCounts() {
   if (slEl) slEl.textContent = (data.sessionlog || []).length;
   const pplEl = document.getElementById('count-people');
   if (pplEl) pplEl.textContent = (data.people || []).filter(p => p.active !== false).length;
+  const teEl = document.getElementById('count-timeentries');
+  if (teEl) teEl.textContent = (data.timeentries || []).length;
 }
 
 function renderDashboard() {
@@ -4963,6 +5099,7 @@ function addNext() {
     text,
     context: document.getElementById('next-context').value,
     projectId: document.getElementById('next-project').value || null,
+    clientId: document.getElementById('next-client').value || null,
     priority: document.getElementById('next-priority').value,
     energy: document.getElementById('next-energy').value,
     dueDate: document.getElementById('next-due').value || null,
@@ -4986,6 +5123,7 @@ function addNext() {
   document.getElementById('next-notes').value = '';
   document.getElementById('next-due').value = '';
   document.getElementById('next-focus').value = '';
+  document.getElementById('next-client').value = '';
   initPersonPicker('next', []);
   toggleForm('next');
   save(); render();
@@ -4998,6 +5136,12 @@ function handleNextProjectChange(sel) {
     document.getElementById('new-project-title-inline').focus();
   } else {
     inlineDiv.style.display = 'none';
+  }
+  // Prepopulate (not lock) the client field from the project's own client, if set.
+  const clientEl = document.getElementById('next-client');
+  if (clientEl && sel.value && sel.value !== '__new__') {
+    const proj = data.projects.find(p => p.id === sel.value);
+    if (proj && proj.clientId) clientEl.value = proj.clientId;
   }
 }
 
@@ -5288,6 +5432,7 @@ function addProject() {
     area: document.getElementById('project-area').value,
     status: document.getElementById('project-status').value,
     priority: document.getElementById('project-priority').value || 'med',
+    clientId: document.getElementById('project-client').value || null,
     notes: document.getElementById('project-notes').value.trim(),
     personIds
   };
@@ -5304,6 +5449,7 @@ function addProject() {
       }
       if (fields.outcome !== undefined) item.outcome = fields.outcome;
       if (fields.priority !== undefined) item.priority = fields.priority;
+      item.clientId = fields.clientId;
       if (fields.notes !== undefined) item.notes = fields.notes;
       item.personIds = personIds;
       syncBucketViews();
@@ -5313,6 +5459,7 @@ function addProject() {
   }
   ['project-title','project-outcome','project-notes'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('project-priority').value = 'med';
+  document.getElementById('project-client').value = '';
   initPersonPicker('projects', []);
   toggleForm('projects');
   save(); render();
@@ -7133,6 +7280,8 @@ function deleteItem(bucket, id) {
       // Areas are still a first-class array (not in data.items)
       data.areas = (data.areas || []).filter(x => x.id !== id);
       syncBucketViews();
+    } else if (bucket === 'timeentries') {
+      data.timeentries = (data.timeentries || []).filter(x => x.id !== id);
     } else {
       removeItemById(id);
     }
@@ -7219,6 +7368,7 @@ function populateForm(bucket, item) {
     document.getElementById('next-due').value = item.dueDate || '';
     document.getElementById('next-focus').value = item.focusDate || '';
     document.getElementById('next-notes').value = item.notes || '';
+    document.getElementById('next-client').value = item.clientId || '';
     initPersonPicker('next', item.personIds || []);
   } else if (bucket === 'projects') {
     document.getElementById('project-title').value = item.title || '';
@@ -7226,6 +7376,7 @@ function populateForm(bucket, item) {
     document.getElementById('project-area').value = item.area || '';
     document.getElementById('project-status').value = item.status || 'active';
     document.getElementById('project-priority').value = item.priority || 'med';
+    document.getElementById('project-client').value = item.clientId || '';
     document.getElementById('project-notes').value = item.notes || '';
     initPersonPicker('projects', item.personIds || []);
   } else if (bucket === 'waiting') {
@@ -7261,12 +7412,27 @@ function populateForm(bucket, item) {
     document.getElementById('sessionlog-body').value = item.body || '';
     document.getElementById('sessionlog-tags').value = (item.tags || []).join(', ');
     document.getElementById('sessionlog-author').value = item.author || '';
+  } else if (bucket === 'timeentries') {
+    document.getElementById('te-date').value = item.date || '';
+    document.getElementById('te-client').value = item.clientId || '';
+    populateTeProjectSelect();
+    document.getElementById('te-project').value = item.projectId || '';
+    populateTeActionSelect();
+    document.getElementById('te-action').value = item.actionId || '';
+    const mode = item.mode || 'duration';
+    document.querySelector(`input[name="te-mode"][value="${mode}"]`).checked = true;
+    toggleTeMode(mode);
+    document.getElementById('te-start').value = item.startTime || '';
+    document.getElementById('te-end').value = item.endTime || '';
+    document.getElementById('te-duration').value = item.hours != null ? item.hours : '';
+    document.getElementById('te-description').value = item.description || '';
+    document.getElementById('te-billing').value = item.billingStatus || 'unbilled';
   }
 }
 
 // Update each form's primary button to read "Save changes" when in edit mode, "Add" otherwise.
 const SAVE_BUTTON_DEFAULTS = {
-  inbox: 'Add to Inbox', next: 'Add', projects: 'Add', waiting: 'Add', calendar: 'Add', someday: 'Add', areas: 'Add', sessionlog: 'Add'
+  inbox: 'Add to Inbox', next: 'Add', projects: 'Add', waiting: 'Add', calendar: 'Add', someday: 'Add', areas: 'Add', sessionlog: 'Add', timeentries: 'Add'
 };
 function updateSaveButtonLabels() {
   Object.keys(SAVE_BUTTON_DEFAULTS).forEach(bucket => {
@@ -7306,6 +7472,283 @@ function populateAreaSelects() {
   const opts = '<option value="">— Area —</option>' + data.areas.map(a => `<option value="${a.id}">${escapeHtml(a.title)}</option>`).join('');
   const el = document.getElementById('project-area');
   if (el) el.innerHTML = opts;
+}
+function populateClientSelects() {
+  const active = (data.clients || []).filter(c => c.active !== false).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const opts = '<option value="">— Client (optional) —</option>' + active.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+  ['project-client', 'next-client', 'te-client'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const prev = el.value;
+    el.innerHTML = opts;
+    if (prev && active.some(c => c.id === prev)) el.value = prev;
+  });
+}
+
+// =================================================================
+// CLIENTS (for billable Time Entries)
+// =================================================================
+function addClient() {
+  const nameEl = document.getElementById('te-new-client-name');
+  const name = nameEl.value.trim();
+  if (!name) return;
+  if (!data.clients) data.clients = [];
+  data.clients.push({ id: uid('c'), name, active: true, created: new Date().toISOString().slice(0, 10) });
+  nameEl.value = '';
+  save(); render();
+}
+function renameClient(id) {
+  const c = (data.clients || []).find(x => x.id === id);
+  if (!c) return;
+  const newName = prompt('Rename client', c.name);
+  if (newName && newName.trim()) { c.name = newName.trim(); save(); render(); }
+}
+function toggleClientActive(id) {
+  const c = (data.clients || []).find(x => x.id === id);
+  if (c) { c.active = c.active === false ? true : false; save(); render(); }
+}
+function renderClientsListPanel() {
+  const el = document.getElementById('te-clients-list');
+  if (!el) return;
+  const clients = (data.clients || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  if (!clients.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px;">No clients yet — add one above.</div>'; return; }
+  el.innerHTML = clients.map(c => `
+    <div data-item-id="${escapeHtml(c.id)}" style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;${c.active === false ? 'opacity:0.5;' : ''}">
+      <span style="flex:1;">${escapeHtml(c.name)}${c.active === false ? ' (inactive)' : ''}</span>
+      <button class="icon-btn" onclick="renameClient('${c.id}')">✏️ Rename</button>
+      <button class="icon-btn" onclick="toggleClientActive('${c.id}')">${c.active === false ? 'Reactivate' : 'Deactivate'}</button>
+      <button class="btn danger" onclick="deleteItem('clients','${c.id}')">${isDeleting('clients', c.id) ? '⚠️ Click again' : 'Delete'}</button>
+    </div>
+  `).join('');
+}
+
+// =================================================================
+// TIME ENTRIES (billable work against clients/projects/actions)
+// =================================================================
+function populateTeProjectSelect() {
+  const prio = { high: 0, med: 1, low: 2 };
+  const sorted = (data.projects || []).slice().sort((a, b) => {
+    const ap = prio[a.priority || 'med'], bp = prio[b.priority || 'med'];
+    if (ap !== bp) return ap - bp;
+    return (a.title || '').localeCompare(b.title || '');
+  });
+  const opts = '<option value="">— No project —</option>' + sorted.map(p => `<option value="${p.id}">${escapeHtml(p.title || '')}</option>`).join('');
+  const el = document.getElementById('te-project');
+  if (el) {
+    const prev = el.value;
+    el.innerHTML = opts;
+    if (prev && sorted.some(p => p.id === prev)) el.value = prev;
+  }
+}
+
+function populateTeActionSelect() {
+  const projectId = document.getElementById('te-project') ? document.getElementById('te-project').value : '';
+  let actions = (data.items || []).filter(it => it.kind === 'action' && it.status !== 'done' && (!projectId || it.projectId === projectId));
+  actions = actions.slice().sort((a, b) => (a.text || '').localeCompare(b.text || ''));
+  const opts = '<option value="">— No action —</option>' + actions.map(a => `<option value="${a.id}">${escapeHtml((a.text || '').slice(0, 60))}</option>`).join('');
+  const el = document.getElementById('te-action');
+  if (el) {
+    const prev = el.value;
+    el.innerHTML = opts;
+    if (prev && actions.some(a => a.id === prev)) el.value = prev;
+  }
+}
+
+function handleTeProjectChange(sel) {
+  populateTeActionSelect();
+  const clientEl = document.getElementById('te-client');
+  if (sel.value && clientEl) {
+    const proj = (data.projects || []).find(p => p.id === sel.value);
+    if (proj && proj.clientId) clientEl.value = proj.clientId;
+  }
+}
+
+function handleTeActionChange(sel) {
+  const clientEl = document.getElementById('te-client');
+  if (sel.value && clientEl) {
+    const action = (data.items || []).find(it => it.id === sel.value);
+    if (action && action.clientId) clientEl.value = action.clientId;
+  }
+}
+
+function toggleTeMode(mode) {
+  const rangeRow = document.getElementById('te-range-row');
+  const durationRow = document.getElementById('te-duration-row');
+  if (rangeRow) rangeRow.style.display = mode === 'range' ? 'flex' : 'none';
+  if (durationRow) durationRow.style.display = mode === 'duration' ? 'flex' : 'none';
+}
+
+function computeHoursFromRange(start, end) {
+  if (!start || !end) return null;
+  const [sh, sm] = start.split(':').map(Number);
+  const [eh, em] = end.split(':').map(Number);
+  const mins = (eh * 60 + em) - (sh * 60 + sm);
+  if (mins <= 0) return null; // end must be after start -- no overnight-span guessing
+  return mins / 60;
+}
+
+function recalcTeRangeHours() {
+  const start = document.getElementById('te-start').value;
+  const end = document.getElementById('te-end').value;
+  const display = document.getElementById('te-range-hours-display');
+  const hours = computeHoursFromRange(start, end);
+  if (display) display.textContent = hours != null ? (hours.toFixed(2) + ' hours') : (start && end ? 'End must be after start' : '');
+}
+
+function saveTimeEntry() {
+  const date = document.getElementById('te-date').value || new Date().toISOString().slice(0, 10);
+  const clientId = document.getElementById('te-client').value || null;
+  const projectId = document.getElementById('te-project').value || null;
+  const actionId = document.getElementById('te-action').value || null;
+  const mode = document.querySelector('input[name="te-mode"]:checked').value;
+  let hours, startTime = null, endTime = null;
+  if (mode === 'range') {
+    startTime = document.getElementById('te-start').value || null;
+    endTime = document.getElementById('te-end').value || null;
+    hours = computeHoursFromRange(startTime, endTime);
+    if (hours == null) { alert('Enter a valid start and end time (end must be after start).'); return; }
+  } else {
+    hours = parseFloat(document.getElementById('te-duration').value);
+    if (!hours || hours <= 0) { alert('Enter a valid number of hours.'); return; }
+  }
+  const description = document.getElementById('te-description').value.trim();
+  const billingStatus = document.getElementById('te-billing').value || 'unbilled';
+
+  const editId = editingId['timeentries'];
+  if (editId) {
+    const entry = (data.timeentries || []).find(x => x.id === editId);
+    if (entry) Object.assign(entry, { date, clientId, projectId, actionId, mode, startTime, endTime, hours, description, billingStatus });
+  } else {
+    if (!data.timeentries) data.timeentries = [];
+    data.timeentries.push({
+      id: uid('te'), date, clientId, projectId, actionId, mode, startTime, endTime, hours, description, billingStatus,
+      created: new Date().toISOString().slice(0, 10)
+    });
+  }
+  document.getElementById('te-date').value = '';
+  document.getElementById('te-client').value = '';
+  document.getElementById('te-project').value = '';
+  populateTeActionSelect();
+  document.getElementById('te-action').value = '';
+  const durationRadio = document.querySelector('input[name="te-mode"][value="duration"]');
+  if (durationRadio) durationRadio.checked = true;
+  toggleTeMode('duration');
+  document.getElementById('te-start').value = '';
+  document.getElementById('te-end').value = '';
+  document.getElementById('te-duration').value = '';
+  document.getElementById('te-description').value = '';
+  document.getElementById('te-billing').value = 'unbilled';
+  toggleForm('timeentries');
+  save(); render();
+}
+
+function cycleTeBillingStatus(id) {
+  const e = (data.timeentries || []).find(x => x.id === id);
+  if (!e) return;
+  const order = ['unbilled', 'invoiced', 'paid'];
+  const idx = order.indexOf(e.billingStatus || 'unbilled');
+  e.billingStatus = order[(idx + 1) % order.length];
+  save(); render();
+}
+
+let teFilterClient = '';
+let teFilterBilling = '';
+let teFilterRange = 'all'; // all | week | month | custom
+let teFilterFrom = '';
+let teFilterTo = '';
+function setTeFilterClient(v) { teFilterClient = v; renderTimeEntries(); }
+function setTeFilterBilling(v) { teFilterBilling = v; renderTimeEntries(); }
+function setTeFilterRange(v) { teFilterRange = v; renderTimeEntries(); }
+function setTeFilterFrom(v) { teFilterFrom = v; renderTimeEntries(); }
+function setTeFilterTo(v) { teFilterTo = v; renderTimeEntries(); }
+
+function teMatchesFilters(e) {
+  if (teFilterClient && e.clientId !== teFilterClient) return false;
+  if (teFilterBilling && e.billingStatus !== teFilterBilling) return false;
+  if (teFilterRange === 'week') {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 6);
+    if (e.date < cutoff.toISOString().slice(0, 10)) return false;
+  } else if (teFilterRange === 'month') {
+    const ym = new Date().toISOString().slice(0, 7);
+    if (!e.date || !e.date.startsWith(ym)) return false;
+  } else if (teFilterRange === 'custom') {
+    if (teFilterFrom && e.date < teFilterFrom) return false;
+    if (teFilterTo && e.date > teFilterTo) return false;
+  }
+  return true;
+}
+
+function renderTimeEntries() {
+  renderClientsListPanel();
+  populateTeProjectSelect();
+  populateTeActionSelect();
+
+  const filterEl = document.getElementById('te-filter-row');
+  const summaryEl = document.getElementById('te-summary-line');
+  const listEl = document.getElementById('list-timeentries');
+  if (!listEl) return;
+
+  const clients = (data.clients || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  if (filterEl) {
+    filterEl.innerHTML = `
+      <select onchange="setTeFilterClient(this.value)">
+        <option value="">All clients</option>
+        ${clients.map(c => `<option value="${c.id}" ${teFilterClient === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+      </select>
+      <select onchange="setTeFilterRange(this.value)">
+        <option value="all" ${teFilterRange === 'all' ? 'selected' : ''}>All time</option>
+        <option value="week" ${teFilterRange === 'week' ? 'selected' : ''}>Last 7 days</option>
+        <option value="month" ${teFilterRange === 'month' ? 'selected' : ''}>This month</option>
+        <option value="custom" ${teFilterRange === 'custom' ? 'selected' : ''}>Custom range</option>
+      </select>
+      ${teFilterRange === 'custom' ? `
+        <input type="date" value="${teFilterFrom}" onchange="setTeFilterFrom(this.value)" title="From" />
+        <input type="date" value="${teFilterTo}" onchange="setTeFilterTo(this.value)" title="To" />
+      ` : ''}
+      <select onchange="setTeFilterBilling(this.value)">
+        <option value="">All statuses</option>
+        <option value="unbilled" ${teFilterBilling === 'unbilled' ? 'selected' : ''}>Unbilled</option>
+        <option value="invoiced" ${teFilterBilling === 'invoiced' ? 'selected' : ''}>Invoiced</option>
+        <option value="paid" ${teFilterBilling === 'paid' ? 'selected' : ''}>Paid</option>
+      </select>
+    `;
+  }
+
+  const all = (data.timeentries || []).filter(teMatchesFilters).slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const totalHours = all.reduce((sum, e) => sum + (e.hours || 0), 0);
+  if (summaryEl) summaryEl.textContent = all.length ? `${totalHours.toFixed(2)} hours across ${all.length} ${all.length === 1 ? 'entry' : 'entries'}` : 'No time entries match these filters.';
+
+  if (!all.length) { listEl.innerHTML = ''; return; }
+
+  const billingBg = { unbilled: '#fef3c7', invoiced: '#dbeafe', paid: '#d1fae5' };
+  const billingColor = { unbilled: '#92400e', invoiced: '#1e40af', paid: '#065f46' };
+
+  listEl.innerHTML = all.map(e => {
+    const client = (data.clients || []).find(c => c.id === e.clientId);
+    const project = e.projectId ? (data.projects || []).find(p => p.id === e.projectId) : null;
+    const action = e.actionId ? (data.items || []).find(it => it.id === e.actionId) : null;
+    const bs = e.billingStatus || 'unbilled';
+    return `
+      <div class="item" data-item-id="${escapeHtml(e.id)}">
+        <div class="item-body">
+          <div class="item-text">${e.hours != null ? e.hours.toFixed(2) : '?'} hrs — ${client ? escapeHtml(client.name) : '<span style="color:var(--muted);">No client</span>'}</div>
+          <div class="item-meta">
+            <span class="chip id">#${escapeHtml(e.id)}</span>
+            <span class="chip">${escapeHtml(e.date || '')}</span>
+            ${project ? `<span class="chip project" onclick="focusItem('${project.id}')" style="cursor:pointer;">↳ ${escapeHtml((project.title || '').slice(0, 40))}</span>` : ''}
+            ${action ? `<span class="chip" onclick="focusItem('${action.id}')" style="cursor:pointer;">→ ${escapeHtml((action.text || '').slice(0, 40))}</span>` : ''}
+            <span class="chip" onclick="cycleTeBillingStatus('${e.id}')" style="cursor:pointer;background:${billingBg[bs]};color:${billingColor[bs]};" title="Click to change status">${bs}</span>
+          </div>
+          ${e.description ? `<div class="item-notes">${linkifyNotes(e.description)}</div>` : ''}
+        </div>
+        <div class="item-actions">
+          <button class="icon-btn" title="Edit" onclick="startEdit('timeentries','${e.id}')">✏️ Edit</button>
+          <button class="btn danger" onclick="deleteItem('timeentries','${e.id}')">${isDeleting('timeentries', e.id) ? '⚠️ Click again' : 'Delete'}</button>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 // quick capture: enter key
@@ -7436,6 +7879,10 @@ function updateMobileBadges() {
     ['count-calendar',   'mob-count-calendar2'],
     ['count-someday',    'mob-count-someday2'],
     ['count-sessionlog', 'mob-count-sessionlog2'],
+    ['count-focus',      'mob-count-focus2'],
+    ['count-done',       'mob-count-done2'],
+    ['count-people',     'mob-count-people2'],
+    ['count-timeentries','mob-count-timeentries2'],
   ];
   pairs.forEach(([src, dest]) => {
     const srcEl  = document.getElementById(src);
@@ -7490,6 +7937,22 @@ render = function(...args) {
 <div id="mobile-more-overlay" onclick="closeMobileMore()"></div>
 <div id="mobile-more-drawer" role="dialog" aria-label="More navigation">
   <div class="drawer-handle"></div>
+  <button onclick="toggleQuickAddMenu();closeMobileMore();">
+    <span class="drawer-icon">＋</span> Quick Add…
+  </button>
+  <button onclick="toggleGlobalSearch();closeMobileMore();">
+    <span class="drawer-icon">🔍</span> Search
+  </button>
+  <div class="drawer-divider"></div>
+  <div class="drawer-section-label">Capture</div>
+  <button onclick="mobileNav('briefing')">
+    <span class="drawer-icon">☀️</span> Morning Brief
+  </button>
+  <button onclick="mobileNav('focus')">
+    <span class="drawer-icon">🎯</span> Focus
+    <span class="drawer-badge" id="mob-count-focus2"></span>
+  </button>
+  <div class="drawer-divider"></div>
   <div class="drawer-section-label">Lists</div>
   <button onclick="mobileNav('waiting')">
     <span class="drawer-icon">⏳</span> Waiting For
@@ -7503,11 +7966,23 @@ render = function(...args) {
     <span class="drawer-icon">💡</span> Someday / Maybe
     <span class="drawer-badge" id="mob-count-someday2"></span>
   </button>
+  <button onclick="mobileNav('done')">
+    <span class="drawer-icon">✔️</span> Done
+    <span class="drawer-badge" id="mob-count-done2"></span>
+  </button>
   <button onclick="mobileNav('areas')">
     <span class="drawer-icon">🎯</span> Areas of Focus
   </button>
   <button onclick="mobileNav('horizons')">
     <span class="drawer-icon">🔭</span> Goals &amp; Horizons
+  </button>
+  <button onclick="mobileNav('people')">
+    <span class="drawer-icon">👥</span> People
+    <span class="drawer-badge" id="mob-count-people2"></span>
+  </button>
+  <button onclick="mobileNav('timeentries')">
+    <span class="drawer-icon">⏱</span> Time Entries
+    <span class="drawer-badge" id="mob-count-timeentries2"></span>
   </button>
   <div class="drawer-divider"></div>
   <div class="drawer-section-label">Reflect</div>
