@@ -1434,7 +1434,7 @@
       </div>
       <div class="form-row">
         <select id="next-client" onchange="handleClientSelectChange(this)" title="Client (optional) — auto-filled from the project's client, but you can override it">
-          <option value="">— Client (optional) —</option>
+          <option value="">— Client —</option>
         </select>
       </div>
       <div id="new-project-inline" style="display:none;margin:4px 0 8px;padding:10px 12px;background:var(--surface-raised,#f9fafb);border:1px solid var(--border-strong);border-radius:8px;">
@@ -1524,7 +1524,7 @@
           <option value="low">Priority: Low</option>
         </select>
         <select id="project-client" onchange="handleClientSelectChange(this)" title="Client (optional) — actions created under this project will inherit this client automatically">
-          <option value="">— Client (optional) —</option>
+          <option value="">— Client —</option>
         </select>
       </div>
       <textarea id="project-notes" placeholder="Notes, links, context (optional)" rows="2"></textarea>
@@ -1744,7 +1744,7 @@
       <div class="form-row">
         <input type="date" id="te-date" title="Date work was performed" />
         <select id="te-client" onchange="handleClientSelectChange(this)">
-          <option value="">— Client (optional) —</option>
+          <option value="">— Client —</option>
         </select>
       </div>
       <div class="form-row">
@@ -2019,7 +2019,7 @@
 // =================================================================
 // Bump this on every shipped change so the header shows which version is live.
 // Format: YYYY-MM-DD.<short description of the change>
-const APP_BUILD = '2026-10-02.01';
+const APP_BUILD = '2026-10-02.03';
 const STORAGE_KEY = 'kevin-gtd-v1';
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
@@ -2835,6 +2835,8 @@ function _buildV2Payload() {
     items,
     areas,
     people:          data.people || [],
+    clients:         data.clients || [],
+    timeentries:     data.timeentries || [],
     nextIdCounters:  data.nextIdCounters || {},
     reviewState:     data.reviewState || { daily: {}, weekly: {}, monthly: {} },
     horizons:        data.horizons || {},
@@ -5398,6 +5400,7 @@ function renderProjectCard(p) {
         </div>
       </div>
       ${renderItemPersonLine(p)}
+      ${p.clientId ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">🏢 ${escapeHtml(((data.clients||[]).find(c=>c.id===p.clientId)||{}).name || '(unknown client)')}</div>` : ''}
       ${p.outcome ? `<div class="outcome">${escapeHtml(p.outcome)}</div>` : ''}
       ${p.notes ? `<div class="item-notes">${linkifyNotes(p.notes)}</div>` : ''}
       ${addingNoteFor === 'projects:' + p.id ? `
@@ -5436,6 +5439,7 @@ function renderProjectCard(p) {
         </select>
         ${p.status !== 'completed' && p.status !== 'done' ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('projects','${p.id}')">📝 Add note</button>` : ''}
         ${p.status !== 'completed' && p.status !== 'done' ? `<button class="icon-btn" title="Add person" onclick="openItemPersonPicker('${p.id}', this)">👤 + Person</button>` : ''}
+        ${p.status !== 'completed' && p.status !== 'done' ? `<button class="icon-btn" title="Set client" onclick="openItemClientPicker('${p.id}', this)">🏢 ${p.clientId ? 'Change' : '+'} Client</button>` : ''}
         <button class="icon-btn" title="Edit project" onclick="startEdit('projects','${p.id}')">✏️ Edit</button>
         <button class="icon-btn" title="Convert this Project into a single Next Action (only allowed when no open linked actions remain)" onclick="convertToAction('${p.id}')">↓ To Action</button>
         <button class="btn danger" onclick="deleteItem('projects','${p.id}')">${isDeleting('projects', p.id) ? '⚠️ Click again' : 'Delete'}</button>
@@ -6457,6 +6461,102 @@ function initPersonPicker(bucket, ids) {
 // Inline per-item picker + person-tag display on cards
 // -----------------------------------------------------------------
 let inlineItemPickerFor = null; // { id }
+
+// Single-value client picker (mirrors the Person picker's popover pattern,
+// but setting a client REPLACES any existing one rather than appending,
+// since an item has at most one client, not a list of them).
+let inlineClientPickerFor = null; // { id: itemId }
+function openItemClientPicker(itemId, buttonEl) {
+  closeItemClientPicker();
+  closeItemPersonPicker();
+  inlineClientPickerFor = { id: itemId };
+  const dropdown = document.createElement('div');
+  dropdown.id = 'inline-client-picker';
+  dropdown.style.cssText = 'position:absolute;z-index:1000;background:var(--surface);border:1px solid var(--border-strong);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,0.14);padding:6px;width:280px;max-height:320px;overflow-y:auto;';
+  dropdown.innerHTML = `
+    <input type="text" class="picker-search" placeholder="Search clients..." oninput="filterInlineClientPickerOptions(this.value)" />
+    <div id="inline-client-picker-options"></div>
+  `;
+  document.body.appendChild(dropdown);
+  const rect = buttonEl.getBoundingClientRect();
+  const dropW = 280;
+  const leftPref = rect.left + window.scrollX;
+  const leftMax = window.scrollX + window.innerWidth - dropW - 8;
+  dropdown.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+  dropdown.style.left = Math.max(8, Math.min(leftPref, leftMax)) + 'px';
+  dropdown.querySelector('input').focus();
+  filterInlineClientPickerOptions('');
+  setTimeout(() => {
+    document.addEventListener('click', function outside(e) {
+      const d = document.getElementById('inline-client-picker');
+      if (!d) { document.removeEventListener('click', outside); return; }
+      if (!d.contains(e.target)) { closeItemClientPicker(); document.removeEventListener('click', outside); }
+    });
+  }, 0);
+}
+function closeItemClientPicker() {
+  const el = document.getElementById('inline-client-picker');
+  if (el) el.remove();
+  inlineClientPickerFor = null;
+}
+function filterInlineClientPickerOptions(term) {
+  const list = document.getElementById('inline-client-picker-options');
+  if (!list || !inlineClientPickerFor) return;
+  const item = (data.items || []).find(x => x.id === inlineClientPickerFor.id);
+  if (!item) return;
+  const raw = (term || '').trim();
+  const t = raw.toLowerCase();
+  const candidates = (data.clients || [])
+    .filter(c => c.active !== false)
+    .filter(c => c.id !== item.clientId)
+    .filter(c => !t || (c.name || '').toLowerCase().includes(t))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    .slice(0, 30);
+  const exactMatch = raw && (data.clients || []).some(c => (c.name || '').toLowerCase() === t);
+  let html = '';
+  if (item.clientId) {
+    const current = (data.clients || []).find(c => c.id === item.clientId);
+    html += `
+      <div class="picker-opt" style="color:#991b1b;" onclick="setClientForItem(null)">
+        <span>✕ Clear client${current ? ' (' + escapeHtml(current.name) + ')' : ''}</span>
+      </div>
+    `;
+  }
+  html += candidates.map(c => `
+    <div class="picker-opt" onclick="setClientForItem('${c.id}')">
+      <span>${escapeHtml(c.name)}</span>
+    </div>
+  `).join('');
+  if (raw && !exactMatch) {
+    html += `
+      <div class="picker-opt" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:8px;color:var(--accent);" data-new-name="${escapeHtml(raw)}" onclick="createAndSetClientForItem(this.dataset.newName)">
+        <span>+ Add "${escapeHtml(raw)}" as new client</span>
+      </div>
+    `;
+  }
+  if (!html) html = `<div style="padding:8px 10px;font-size:12px;color:var(--muted);">Type a name to search or add.</div>`;
+  list.innerHTML = html;
+}
+function createAndSetClientForItem(name) {
+  const trimmed = (name || '').trim();
+  if (!trimmed || !inlineClientPickerFor) return;
+  if (!data.clients) data.clients = [];
+  const c = { id: uid('c'), name: trimmed, active: true, created: new Date().toISOString().slice(0, 10) };
+  data.clients.push(c);
+  const item = (data.items || []).find(x => x.id === inlineClientPickerFor.id);
+  if (item) item.clientId = c.id;
+  closeItemClientPicker();
+  save(); render();
+  showToast(`Set client to ${c.name}`);
+}
+function setClientForItem(clientId) {
+  if (!inlineClientPickerFor) return;
+  const item = (data.items || []).find(x => x.id === inlineClientPickerFor.id);
+  if (!item) return;
+  item.clientId = clientId || null;
+  closeItemClientPicker();
+  save(); render();
+}
 
 function openItemPersonPicker(itemId, buttonEl) {
   closeItemPersonPicker();
@@ -7527,7 +7627,7 @@ function populateAreaSelects() {
 }
 function populateClientSelects() {
   const active = (data.clients || []).filter(c => c.active !== false).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  const opts = '<option value="">— Client (optional) —</option>' + active.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('') +
+  const opts = '<option value="">— Client —</option>' + active.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('') +
     '<option value="__newclient__" style="color:var(--accent,#2563eb);font-style:italic;">＋ Create new client…</option>';
   ['project-client', 'next-client', 'te-client'].forEach(id => {
     const el = document.getElementById(id);
