@@ -2019,7 +2019,7 @@
 // =================================================================
 // Bump this on every shipped change so the header shows which version is live.
 // Format: YYYY-MM-DD.<short description of the change>
-const APP_BUILD = '2026-10-01.02';
+const APP_BUILD = '2026-10-02.01';
 const STORAGE_KEY = 'kevin-gtd-v1';
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
@@ -5052,7 +5052,18 @@ function renderNext() {
               <label style="font-size:12px;color:var(--muted);font-weight:500;">⏱ Add time${n.clientId ? ' — ' + escapeHtml(((data.clients||[]).find(c=>c.id===n.clientId)||{}).name || '') : ''}</label>
               <div class="form-row" style="margin-top:6px;">
                 <input type="date" id="add-time-date-listnext-${n.id}" value="${new Date().toISOString().slice(0,10)}" />
+              </div>
+              <div class="form-row" style="align-items:center;gap:14px;margin-top:4px;">
+                <label style="font-size:12px;display:flex;align-items:center;gap:4px;"><input type="radio" name="add-time-mode-listnext-${n.id}" value="duration" checked onchange="toggleAddTimeMode('listnext','${n.id}','duration')" /> Duration</label>
+                <label style="font-size:12px;display:flex;align-items:center;gap:4px;"><input type="radio" name="add-time-mode-listnext-${n.id}" value="range" onchange="toggleAddTimeMode('listnext','${n.id}','range')" /> Clock times</label>
+              </div>
+              <div class="form-row" id="add-time-duration-row-listnext-${n.id}" style="margin-top:6px;">
                 <input type="number" id="add-time-hours-listnext-${n.id}" placeholder="Hours (e.g. 1.5)" step="0.1" min="0" onkeydown="if(event.key==='Enter')submitAddTime('${n.id}','listnext')" />
+              </div>
+              <div class="form-row" id="add-time-range-row-listnext-${n.id}" style="display:none;margin-top:6px;align-items:center;">
+                <input type="time" id="add-time-start-listnext-${n.id}" onchange="recalcAddTimeRangeHours('listnext','${n.id}')" />
+                <input type="time" id="add-time-end-listnext-${n.id}" onchange="recalcAddTimeRangeHours('listnext','${n.id}')" />
+                <span id="add-time-range-display-listnext-${n.id}" style="font-size:12px;color:var(--muted);"></span>
               </div>
               <input type="text" id="add-time-desc-listnext-${n.id}" placeholder="Description (optional)" style="width:100%;margin-top:6px;padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;box-sizing:border-box;" onkeydown="if(event.key==='Enter')submitAddTime('${n.id}','listnext')" />
               <div style="display:flex;gap:6px;margin-top:6px;">
@@ -5968,7 +5979,18 @@ function renderFocus() {
                 <label style="font-size:12px;color:var(--muted);font-weight:500;">⏱ Add time${it.clientId ? ' — ' + escapeHtml(((data.clients||[]).find(c=>c.id===it.clientId)||{}).name || '') : ''}</label>
                 <div class="form-row" style="margin-top:6px;">
                   <input type="date" id="add-time-date-listfocus-${it.id}" value="${new Date().toISOString().slice(0,10)}" />
+                </div>
+                <div class="form-row" style="align-items:center;gap:14px;margin-top:4px;">
+                  <label style="font-size:12px;display:flex;align-items:center;gap:4px;"><input type="radio" name="add-time-mode-listfocus-${it.id}" value="duration" checked onchange="toggleAddTimeMode('listfocus','${it.id}','duration')" /> Duration</label>
+                  <label style="font-size:12px;display:flex;align-items:center;gap:4px;"><input type="radio" name="add-time-mode-listfocus-${it.id}" value="range" onchange="toggleAddTimeMode('listfocus','${it.id}','range')" /> Clock times</label>
+                </div>
+                <div class="form-row" id="add-time-duration-row-listfocus-${it.id}" style="margin-top:6px;">
                   <input type="number" id="add-time-hours-listfocus-${it.id}" placeholder="Hours (e.g. 1.5)" step="0.1" min="0" onkeydown="if(event.key==='Enter')submitAddTime('${it.id}','listfocus')" />
+                </div>
+                <div class="form-row" id="add-time-range-row-listfocus-${it.id}" style="display:none;margin-top:6px;align-items:center;">
+                  <input type="time" id="add-time-start-listfocus-${it.id}" onchange="recalcAddTimeRangeHours('listfocus','${it.id}')" />
+                  <input type="time" id="add-time-end-listfocus-${it.id}" onchange="recalcAddTimeRangeHours('listfocus','${it.id}')" />
+                  <span id="add-time-range-display-listfocus-${it.id}" style="font-size:12px;color:var(--muted);"></span>
                 </div>
                 <input type="text" id="add-time-desc-listfocus-${it.id}" placeholder="Description (optional)" style="width:100%;margin-top:6px;padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;box-sizing:border-box;" onkeydown="if(event.key==='Enter')submitAddTime('${it.id}','listfocus')" />
                 <div style="display:flex;gap:6px;margin-top:6px;">
@@ -7632,15 +7654,37 @@ function cancelAddTime() {
   addingTimeFor = null;
   render();
 }
+function toggleAddTimeMode(source, actionId, mode) {
+  const durRow = document.getElementById('add-time-duration-row-' + source + '-' + actionId);
+  const rangeRow = document.getElementById('add-time-range-row-' + source + '-' + actionId);
+  if (durRow) durRow.style.display = mode === 'duration' ? 'flex' : 'none';
+  if (rangeRow) rangeRow.style.display = mode === 'range' ? 'flex' : 'none';
+}
+function recalcAddTimeRangeHours(source, actionId) {
+  const start = document.getElementById('add-time-start-' + source + '-' + actionId).value;
+  const end = document.getElementById('add-time-end-' + source + '-' + actionId).value;
+  const display = document.getElementById('add-time-range-display-' + source + '-' + actionId);
+  const hours = computeHoursFromRange(start, end);
+  if (display) display.textContent = hours != null ? (hours.toFixed(2) + ' hrs') : (start && end ? 'End must be after start' : '');
+}
 function submitAddTime(actionId, source) {
   source = source || 'listnext';
   const dateEl = document.getElementById('add-time-date-' + source + '-' + actionId);
-  const hoursEl = document.getElementById('add-time-hours-' + source + '-' + actionId);
   const descEl = document.getElementById('add-time-desc-' + source + '-' + actionId);
-  if (!dateEl || !hoursEl || !descEl) return;
+  if (!dateEl || !descEl) return;
   const date = dateEl.value || new Date().toISOString().slice(0, 10);
-  const hours = parseFloat(hoursEl.value);
-  if (!hours || hours <= 0) { alert('Enter a valid number of hours.'); return; }
+  const modeRadio = document.querySelector('input[name="add-time-mode-' + source + '-' + actionId + '"]:checked');
+  const mode = modeRadio ? modeRadio.value : 'duration';
+  let hours, startTime = null, endTime = null;
+  if (mode === 'range') {
+    startTime = document.getElementById('add-time-start-' + source + '-' + actionId).value || null;
+    endTime = document.getElementById('add-time-end-' + source + '-' + actionId).value || null;
+    hours = computeHoursFromRange(startTime, endTime);
+    if (hours == null) { alert('Enter a valid start and end time (end must be after start).'); return; }
+  } else {
+    hours = parseFloat(document.getElementById('add-time-hours-' + source + '-' + actionId).value);
+    if (!hours || hours <= 0) { alert('Enter a valid number of hours.'); return; }
+  }
   const description = descEl.value.trim();
   const action = (data.items || []).find(it => it.id === actionId);
   if (!data.timeentries) data.timeentries = [];
@@ -7648,7 +7692,7 @@ function submitAddTime(actionId, source) {
     id: uid('te'), date,
     clientId: action ? action.clientId : null,
     projectId: action ? action.projectId : null,
-    actionId, mode: 'duration', startTime: null, endTime: null, hours, description,
+    actionId, mode, startTime, endTime, hours, description,
     billingStatus: 'unbilled', created: new Date().toISOString().slice(0, 10)
   });
   addingTimeFor = null;
