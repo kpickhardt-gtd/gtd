@@ -1433,7 +1433,7 @@
         </select>
       </div>
       <div class="form-row">
-        <select id="next-client" title="Client (optional) — auto-filled from the project's client, but you can override it">
+        <select id="next-client" onchange="handleClientSelectChange(this)" title="Client (optional) — auto-filled from the project's client, but you can override it">
           <option value="">— Client (optional) —</option>
         </select>
       </div>
@@ -1523,7 +1523,7 @@
           <option value="high">Priority: High</option>
           <option value="low">Priority: Low</option>
         </select>
-        <select id="project-client" title="Client (optional) — actions created under this project will inherit this client automatically">
+        <select id="project-client" onchange="handleClientSelectChange(this)" title="Client (optional) — actions created under this project will inherit this client automatically">
           <option value="">— Client (optional) —</option>
         </select>
       </div>
@@ -1743,7 +1743,7 @@
     <div class="add-form" id="form-timeentries">
       <div class="form-row">
         <input type="date" id="te-date" title="Date work was performed" />
-        <select id="te-client">
+        <select id="te-client" onchange="handleClientSelectChange(this)">
           <option value="">— Client (optional) —</option>
         </select>
       </div>
@@ -2019,7 +2019,7 @@
 // =================================================================
 // Bump this on every shipped change so the header shows which version is live.
 // Format: YYYY-MM-DD.<short description of the change>
-const APP_BUILD = '2026-10-01.01';
+const APP_BUILD = '2026-10-01.02';
 const STORAGE_KEY = 'kevin-gtd-v1';
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
@@ -5047,6 +5047,20 @@ function renderNext() {
               </div>
             </div>
           ` : ''}
+          ${addingTimeFor === n.id ? `
+            <div style="margin-top:10px;padding:10px 12px;background:#f9fafb;border:1px solid var(--border-strong);border-radius:6px;">
+              <label style="font-size:12px;color:var(--muted);font-weight:500;">⏱ Add time${n.clientId ? ' — ' + escapeHtml(((data.clients||[]).find(c=>c.id===n.clientId)||{}).name || '') : ''}</label>
+              <div class="form-row" style="margin-top:6px;">
+                <input type="date" id="add-time-date-listnext-${n.id}" value="${new Date().toISOString().slice(0,10)}" />
+                <input type="number" id="add-time-hours-listnext-${n.id}" placeholder="Hours (e.g. 1.5)" step="0.1" min="0" onkeydown="if(event.key==='Enter')submitAddTime('${n.id}','listnext')" />
+              </div>
+              <input type="text" id="add-time-desc-listnext-${n.id}" placeholder="Description (optional)" style="width:100%;margin-top:6px;padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;box-sizing:border-box;" onkeydown="if(event.key==='Enter')submitAddTime('${n.id}','listnext')" />
+              <div style="display:flex;gap:6px;margin-top:6px;">
+                <button class="btn" onclick="submitAddTime('${n.id}','listnext')">Add time</button>
+                <button class="btn secondary" onclick="cancelAddTime()">Cancel</button>
+              </div>
+            </div>
+          ` : ''}
           ${isPrompting ? `
             <div class="waiting-prompt">
               <label style="font-size:12px;color:var(--muted);font-weight:500;">Move to Waiting For — who are you waiting on?</label>
@@ -5065,6 +5079,7 @@ function renderNext() {
           ${!n.done ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('next','${n.id}','listnext')">📝 Add note</button>` : ''}
           ${!n.done ? `<button class="icon-btn" title="Add person" onclick="openItemPersonPicker('${n.id}', this)">👤 + Person</button>` : ''}
           <button class="icon-btn" title="Edit" onclick="startEdit('next','${n.id}')">✏️ Edit</button>
+          ${!n.done ? `<button class="icon-btn" title="Log billable time against this action" onclick="startAddTime('${n.id}','listnext')">⏱ Add time</button>` : ''}
           ${!n.done ? `<button class="icon-btn" title="Convert this Next Action into a multi-step Project (preserves all fields)" onclick="convertToProject('${n.id}')">↑ To Project</button>` : ''}
           <button class="btn danger" onclick="deleteItem('next','${n.id}')">${isDeleting('next', n.id) ? '⚠️ Click again' : 'Delete'}</button>
         </div>
@@ -5391,7 +5406,7 @@ function renderProjectCard(p) {
           ${p.status !== 'completed' && p.status !== 'done' ? `<button class="icon-btn" style="font-size:11px;text-transform:none;letter-spacing:0;font-weight:500;" onclick="startAddActionToProject('${p.id}')">${isAdding ? '✕ Cancel' : '+ Next Action'}</button>` : ''}
         </div>
         ${linked.length === 0 && !isAdding ? '<div class="next-action-empty">⚠ No next action — project is stalled. Add one to keep it moving.</div>' :
-          linked.length > 0 ? '<ul>' + linked.map(n => `<li class="${n.done ? 'done' : ''}">${escapeHtml(n.context)} — ${escapeHtml(n.text)}</li>`).join('') + '</ul>' : ''
+          linked.length > 0 ? '<ul>' + linked.map(n => `<li class="${n.done ? 'done' : ''}" onclick="focusItem('${n.id}')" style="cursor:pointer;" title="Jump to this action in Next Actions">${escapeHtml(n.context)} — ${escapeHtml(n.text)}</li>`).join('') + '</ul>' : ''
         }
         ${isAdding ? `
           <div class="add-action-inline">
@@ -5948,6 +5963,20 @@ function renderFocus() {
                 </div>
               </div>
             ` : ''}
+            ${addingTimeFor === it.id ? `
+              <div style="margin-top:10px;padding:10px 12px;background:#f9fafb;border:1px solid var(--border-strong);border-radius:6px;">
+                <label style="font-size:12px;color:var(--muted);font-weight:500;">⏱ Add time${it.clientId ? ' — ' + escapeHtml(((data.clients||[]).find(c=>c.id===it.clientId)||{}).name || '') : ''}</label>
+                <div class="form-row" style="margin-top:6px;">
+                  <input type="date" id="add-time-date-listfocus-${it.id}" value="${new Date().toISOString().slice(0,10)}" />
+                  <input type="number" id="add-time-hours-listfocus-${it.id}" placeholder="Hours (e.g. 1.5)" step="0.1" min="0" onkeydown="if(event.key==='Enter')submitAddTime('${it.id}','listfocus')" />
+                </div>
+                <input type="text" id="add-time-desc-listfocus-${it.id}" placeholder="Description (optional)" style="width:100%;margin-top:6px;padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;box-sizing:border-box;" onkeydown="if(event.key==='Enter')submitAddTime('${it.id}','listfocus')" />
+                <div style="display:flex;gap:6px;margin-top:6px;">
+                  <button class="btn" onclick="submitAddTime('${it.id}','listfocus')">Add time</button>
+                  <button class="btn secondary" onclick="cancelAddTime()">Cancel</button>
+                </div>
+              </div>
+            ` : ''}
           </div>
           <div class="item-actions">
             ${renderStatusDropdown(it)}
@@ -5957,6 +5986,7 @@ function renderFocus() {
             ${!isDone ? `<button class="icon-btn" title="Add person" onclick="openItemPersonPicker('${it.id}', this)">👤 + Person</button>` : ''}
             <button class="icon-btn" title="Clear focus date" onclick="clearFocusDate('${it.id}')">🗑 Clear focus</button>
             <button class="icon-btn" title="Edit" onclick="startEdit('next','${it.id}')">✏️ Edit</button>
+            ${!isDone ? `<button class="icon-btn" title="Log billable time against this action" onclick="startAddTime('${it.id}','listfocus')">⏱ Add time</button>` : ''}
             ${!isDone ? `<button class="icon-btn" title="Convert this Next Action into a multi-step Project (preserves all fields)" onclick="convertToProject('${it.id}')">↑ To Project</button>` : ''}
             <button class="btn danger" onclick="deleteItem('next','${it.id}')">${isDeleting('next', it.id) ? '⚠️ Click again' : 'Delete'}</button>
           </div>
@@ -7475,7 +7505,8 @@ function populateAreaSelects() {
 }
 function populateClientSelects() {
   const active = (data.clients || []).filter(c => c.active !== false).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  const opts = '<option value="">— Client (optional) —</option>' + active.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+  const opts = '<option value="">— Client (optional) —</option>' + active.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('') +
+    '<option value="__newclient__" style="color:var(--accent,#2563eb);font-style:italic;">＋ Create new client…</option>';
   ['project-client', 'next-client', 'te-client'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -7483,6 +7514,24 @@ function populateClientSelects() {
     el.innerHTML = opts;
     if (prev && active.some(c => c.id === prev)) el.value = prev;
   });
+}
+
+// Shared by every client <select> (Project form, Next Action form, Time
+// Entry form) -- lets you create a client inline instead of needing to go
+// to the Time Entries tab's "Manage Clients" panel first.
+function handleClientSelectChange(selectEl) {
+  if (selectEl.value !== '__newclient__') return;
+  const name = prompt('New client name:');
+  if (name && name.trim()) {
+    if (!data.clients) data.clients = [];
+    const client = { id: uid('c'), name: name.trim(), active: true, created: new Date().toISOString().slice(0, 10) };
+    data.clients.push(client);
+    save();
+    populateClientSelects(); // refreshes options (including the new one) on all three selects
+    selectEl.value = client.id;
+  } else {
+    selectEl.value = '';
+  }
 }
 
 // =================================================================
@@ -7561,6 +7610,49 @@ function handleTeProjectChange(sel) {
     const proj = (data.projects || []).find(p => p.id === sel.value);
     if (proj && proj.clientId) clientEl.value = proj.clientId;
   }
+}
+
+// Inline "Add Time" on a Next Action's own card -- mirrors the Add Note
+// pattern exactly (expand in place, log it, done; no tab navigation).
+// `source` disambiguates DOM ids between Next Actions and Focus, which both
+// render the same action and would otherwise collide (same issue Add Note
+// hit before it was fixed).
+let addingTimeFor = null; // an action id, or null
+function startAddTime(actionId, source) {
+  source = source || 'listnext';
+  if (addingTimeFor === actionId) { addingTimeFor = null; render(); return; }
+  addingTimeFor = actionId;
+  render();
+  setTimeout(() => {
+    const el = document.getElementById('add-time-hours-' + source + '-' + actionId);
+    if (el) el.focus();
+  }, 50);
+}
+function cancelAddTime() {
+  addingTimeFor = null;
+  render();
+}
+function submitAddTime(actionId, source) {
+  source = source || 'listnext';
+  const dateEl = document.getElementById('add-time-date-' + source + '-' + actionId);
+  const hoursEl = document.getElementById('add-time-hours-' + source + '-' + actionId);
+  const descEl = document.getElementById('add-time-desc-' + source + '-' + actionId);
+  if (!dateEl || !hoursEl || !descEl) return;
+  const date = dateEl.value || new Date().toISOString().slice(0, 10);
+  const hours = parseFloat(hoursEl.value);
+  if (!hours || hours <= 0) { alert('Enter a valid number of hours.'); return; }
+  const description = descEl.value.trim();
+  const action = (data.items || []).find(it => it.id === actionId);
+  if (!data.timeentries) data.timeentries = [];
+  data.timeentries.push({
+    id: uid('te'), date,
+    clientId: action ? action.clientId : null,
+    projectId: action ? action.projectId : null,
+    actionId, mode: 'duration', startTime: null, endTime: null, hours, description,
+    billingStatus: 'unbilled', created: new Date().toISOString().slice(0, 10)
+  });
+  addingTimeFor = null;
+  save(); render();
 }
 
 function handleTeActionChange(sel) {
