@@ -2019,7 +2019,7 @@
 // =================================================================
 // Bump this on every shipped change so the header shows which version is live.
 // Format: YYYY-MM-DD.<short description of the change>
-const APP_BUILD = '2026-10-26.02';
+const APP_BUILD = '2026-10-26.03';
 const STORAGE_KEY = 'kevin-gtd-v1';
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
@@ -8086,9 +8086,15 @@ function setBootMsg(msg) {
 async function bootstrap() {
   syncBucketViews();
   try {
-    // If Drive sync is configured, initDriveOnLoad handles everything — skip FSA bootstrap
+    // If Drive sync is configured, actually load from Drive on page start.
+    // Prior behavior only loaded from localStorage, which meant cloudLastModifiedTime
+    // never got set and the Phase 6b write-guard couldn't detect out-of-band edits.
     if (localStorage.getItem(STORAGE_KEY + ':gdriveFileId')) {
+      setBootMsg('Loading from Drive…');
+      await initDriveOnLoad();
       hideBootLoading();
+      render();
+      restoreTab();
       return;
     }
     if (!fsaSupported()) {
