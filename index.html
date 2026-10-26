@@ -2892,6 +2892,25 @@ function setCloudFolderName(name) {
   }
   setCloudStatus(cloudSyncStatus);
 }
+
+// A stored folder "name" of 20+ chars that's only Drive-id characters is almost
+// certainly the folder ID — the user never typed a label in the picker, and the
+// picker fell back to id. Fetch the human-readable name from Drive and replace.
+function _looksLikeDriveId(s) {
+  return typeof s === 'string' && s.length >= 20 && /^[A-Za-z0-9_-]+$/.test(s);
+}
+async function _resolveDriveFolderName() {
+  if (!gdriveFolderId || !gdriveToken) return;
+  if (cloudFolderName && !_looksLikeDriveId(cloudFolderName)) return;
+  try {
+    const resp = await gdriveFetch(`https://www.googleapis.com/drive/v3/files/${gdriveFolderId}?fields=name`);
+    if (!resp.ok) return;
+    const j = await resp.json();
+    if (j && j.name) {
+      setCloudFolderName(j.name);
+    }
+  } catch (e) { /* best-effort — leave stored name as-is */ }
+}
 let cloudSaveTimer = null;
 let cloudLastSavedAt = null;
 let cloudBootstrapped = false; // true once we've successfully loaded from cloud (or confirmed no cloud file exists)
@@ -2936,13 +2955,17 @@ function setCloudStatus(s, msg) {
       connecting: 'status-init', synced: 'status-ok',
       syncing: 'status-init', error: 'status-err'
     };
-    el.textContent = (labels[s] || s) + (msg ? ' — ' + msg : (cloudFolderName && s === 'synced' ? ' · ' + cloudFolderName : ''));
+    // Hide folder name in the chip if it still looks like a raw Drive ID
+    // (will be resolved to a human-readable name in the background on reconnect)
+    const prettyFolder = cloudFolderName && !_looksLikeDriveId(cloudFolderName) ? cloudFolderName : null;
+    el.textContent = (labels[s] || s) + (msg ? ' — ' + msg : (prettyFolder && s === 'synced' ? ' · ' + prettyFolder : ''));
     el.className = 'cloud-sync-indicator ' + (cls[s] || '');
   }
   const info = document.getElementById('cloud-folder-info');
   if (info) {
-    info.textContent = cloudFolderName
-      ? 'Connected folder: ' + cloudFolderName + (cloudLastSavedAt ? ' · last saved ' + new Date(cloudLastSavedAt).toLocaleTimeString() : '')
+    const displayFolder = cloudFolderName && !_looksLikeDriveId(cloudFolderName) ? cloudFolderName : (cloudFolderName ? 'Google Drive folder' : null);
+    info.textContent = displayFolder
+      ? 'Connected folder: ' + displayFolder + (cloudLastSavedAt ? ' · last saved ' + new Date(cloudLastSavedAt).toLocaleTimeString() : '')
       : 'No folder connected yet. Click "🔗 Connect cloud folder" to enable auto-sync.';
   }
   // Show sticky warning banner when Drive is configured but saves are falling back to local-only
@@ -3206,7 +3229,9 @@ function gdrivePickFolder() {
       // Accept full Drive URL or bare ID — extract the ID either way
       const match = raw.match(/\/folders\/([a-zA-Z0-9_-]+)/);
       const id   = match ? match[1] : raw;
-      const name = overlay.querySelector('#gdrive-folder-name-input').value.trim() || id;
+      // Allow empty name — we'll resolve from Drive's folder metadata so the
+      // status chip shows "GTD Task Management" instead of a raw folder ID.
+      const name = overlay.querySelector('#gdrive-folder-name-input').value.trim() || '';
       if (!id) { overlay.querySelector('#gdrive-folder-id-input').style.borderColor = '#dc2626'; return; }
       cleanup();
       resolve({ id, name });
@@ -3327,9 +3352,10 @@ async function saveToDrive(force = false) {
   }
   setCloudStatus('syncing');
   try {
-    const stateJson = JSON.stringify({ version: 2, savedAt: new Date().toISOString(), data: _buildV2Payload() }, null, 2);
+    const savedAt = new Date().toISOString();
+    const stateJson = JSON.stringify({ version: 2, savedAt, data: _buildV2Payload() }, null, 2);
     await gdriveWriteFile(gdriveFileId, stateJson);
-    cloudLastSavedAt = new Date().toISOString();
+    cloudLastSavedAt = savedAt; // must match the stateJson savedAt so pollCloudOnce doesn't re-pull our own write
     await runDriveBackups(stateJson);
     setCloudStatus('synced');
     return true;
@@ -3416,39 +3442,33 @@ async function connectGoogleDrive() {
       driveSyncActive = true;
       cloudBootstrapped = true;
       clearDataProtected();
-      // Check if local cache is newer than Drive (unsaved changes while token was expired)
-      let localSavedAt = '';
-      try { const m = localStorage.getItem(STORAGE_KEY + ':meta'); if (m) localSavedAt = JSON.parse(m).savedAt || ''; } catch(e) {}
       const driveState = await loadFromDrive();
-      const driveSavedAt = driveState?.savedAt || '';
-      if (driveState?.data && driveSavedAt >= localSavedAt) {
-        // Drive is current or newer — load it
+      // On explicit reconnect, Drive is the source of truth. localStorage's savedAt
+      // bumps every time save() runs for ANY reason (even non-mutating re-persists),
+      // so comparing it against Drive's savedAt is unreliable. If Drive has valid
+      // content, we load it — this preserves out-of-band edits (e.g. AI co-pilot
+      // sessions that wrote via file APIs). The only time we'd lose local changes
+      // is if Drive was unreachable but we had unpushed edits; in that case the
+      // existing debouncedCloudSave would retry when the connection returned.
+      if (driveState?.data) {
         data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(driveState.data) };
         syncBucketViews();
         _persistAndRender(driveState.savedAt);
-      } else if (driveState?.data) {
-        // Local cache is newer — push it up, but ONLY if it's not default sample data
-        if (looksLikeDefaultData(data)) {
-          // Drive loaded real data but local is "newer" defaults — something cleared localStorage.
-          // Trust Drive, not the stale local defaults.
-          data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(driveState.data) };
-          syncBucketViews();
-          _persistAndRender(driveState.savedAt);
-        } else {
-          await saveToDrive(true);
-        }
-      } else {
-        // Drive load failed entirely — NEVER push defaults to Drive in this case
-        if (looksLikeDefaultData(data)) {
-          setCloudStatus('error', 'Drive load failed — your data is safe in Drive. Reload the page to try again.');
-          driveSyncActive = false;
-          cloudBootstrapped = false;
-          return;
-        }
-        // Local data is real — push it up
-        await saveToDrive(true);
+        cloudLastSavedAt = driveState.savedAt || cloudLastSavedAt;
+        setCloudStatus('synced', 'pulled fresh from Drive');
+        // Try to resolve a friendlier folder name if we only have the ID stored
+        _resolveDriveFolderName();
+        startCloudPolling();
+        return;
       }
-      setCloudStatus('synced', 'reconnected');
+      // Drive load failed — don't risk overwriting Drive with potentially stale local data
+      if (looksLikeDefaultData(data)) {
+        setCloudStatus('error', 'Drive load failed — your data is safe in Drive. Reload the page to try again.');
+        driveSyncActive = false;
+        cloudBootstrapped = false;
+        return;
+      }
+      setCloudStatus('error', 'Drive load failed — using local cache; next save will retry');
       startCloudPolling();
       return;
     }
@@ -3556,8 +3576,10 @@ function _activateDrive(fileId, folderId, folderName) {
   gdriveFileId   = fileId;   localStorage.setItem(GDRIVE_FILE_ID_KEY,   fileId);
   gdriveFolderId = folderId; localStorage.setItem(GDRIVE_FOLDER_ID_KEY, folderId);
   driveSyncActive = true;
-  setCloudFolderName(folderName);
+  setCloudFolderName(folderName || '');
   clearDataProtected();
+  // If the stored name is empty or looks like a Drive ID, ask Drive for the real name
+  if (!folderName || _looksLikeDriveId(folderName)) _resolveDriveFolderName();
 }
 function _persistAndRender(savedAt) {
   try {
@@ -3608,9 +3630,10 @@ async function pollCloudOnce() {
     if (cloudSaveTimer) return;
     const loaded = await loadFromDrive();
     if (!loaded?.data || !loaded.savedAt) return;
-    let localSavedAt = '';
-    try { const m = localStorage.getItem(STORAGE_KEY + ':meta'); if (m) localSavedAt = JSON.parse(m).savedAt || ''; } catch(e) {}
-    if (loaded.savedAt <= localSavedAt) return;
+    // Only skip if Drive's current savedAt matches what we last pulled/pushed.
+    // Comparing against localStorage's savedAt is unreliable because routine
+    // save() calls bump it even when data hasn't been meaningfully mutated.
+    if (loaded.savedAt === cloudLastSavedAt) return;
     data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(loaded.data) };
     syncBucketViews();
     cloudLastSavedAt = loaded.savedAt;
@@ -3644,13 +3667,9 @@ async function pollCloudOnce() {
     let parsed;
     try { parsed = JSON.parse(text); } catch(e) { return; } // Silent fail; next poll will retry
     if (!parsed.savedAt || !parsed.data) return;
-    // Compare with what we last loaded/saved
-    let localSavedAt = '';
-    try {
-      const meta = localStorage.getItem(STORAGE_KEY + ':meta');
-      if (meta) localSavedAt = JSON.parse(meta).savedAt || '';
-    } catch(e) {}
-    if (parsed.savedAt <= localSavedAt) return; // Already up to date
+    // Compare against the last Drive timestamp we actually saw, not localStorage's
+    // savedAt — routine save() calls bump localSavedAt even without real changes.
+    if (parsed.savedAt === cloudLastSavedAt) return; // Already up to date
     // Cloud is newer — apply
     setCloudStatus('connecting', 'pulling update…');
     data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(parsed.data) };
