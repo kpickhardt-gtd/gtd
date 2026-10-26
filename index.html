@@ -2019,7 +2019,7 @@
 // =================================================================
 // Bump this on every shipped change so the header shows which version is live.
 // Format: YYYY-MM-DD.<short description of the change>
-const APP_BUILD = '2026-10-26.01';
+const APP_BUILD = '2026-10-26.02';
 const STORAGE_KEY = 'kevin-gtd-v1';
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
@@ -2913,6 +2913,7 @@ async function _resolveDriveFolderName() {
 }
 let cloudSaveTimer = null;
 let cloudLastSavedAt = null;
+let cloudLastModifiedTime = null; // Drive's modifiedTime of the last version we read/wrote — used to detect out-of-band edits (e.g. AI co-pilot)
 let cloudBootstrapped = false; // true once we've successfully loaded from cloud (or confirmed no cloud file exists)
 let cloudDataProtected = false;
 let cloudDataProtectedMsg = '';
@@ -3322,6 +3323,19 @@ async function runDriveBackups(stateJson) {
   }
 }
 
+// Cheap check: fetch just the Drive file's modifiedTime so we can detect
+// out-of-band edits (e.g. AI co-pilot sessions writing directly to the file)
+// without downloading the whole payload.
+async function _getDriveModifiedTime() {
+  if (!gdriveFileId || !gdriveToken) return null;
+  try {
+    const resp = await gdriveFetch(`https://www.googleapis.com/drive/v3/files/${gdriveFileId}?fields=modifiedTime`);
+    if (!resp.ok) return null;
+    const j = await resp.json();
+    return j.modifiedTime || null;
+  } catch(e) { return null; }
+}
+
 // Save current data to Drive
 async function saveToDrive(force = false) {
   if (cloudDataProtected) { setCloudStatus('error', 'saves blocked — reload first'); return false; }
@@ -3350,12 +3364,36 @@ async function saveToDrive(force = false) {
     setCloudStatus('error', 'session expired — click 🔗 Connect to sync');
     return false;
   }
+  // Phase 6b guard: if Drive's modifiedTime has advanced since we last saw it,
+  // SOMEONE ELSE wrote to Drive (typically the AI co-pilot editing the file).
+  // Pull-merge before writing so we don't blow away their changes.
+  if (!force && cloudLastModifiedTime) {
+    const driveMod = await _getDriveModifiedTime();
+    if (driveMod && driveMod > cloudLastModifiedTime) {
+      setCloudStatus('syncing', 'Drive updated elsewhere — pulling first');
+      const loaded = await loadFromDrive();
+      if (loaded?.data) {
+        data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(loaded.data) };
+        syncBucketViews();
+        cloudLastSavedAt = loaded.savedAt || cloudLastSavedAt;
+        cloudLastModifiedTime = driveMod;
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+          localStorage.setItem(STORAGE_KEY + ':meta', JSON.stringify({ savedAt: loaded.savedAt }));
+        } catch(e) {}
+        render();
+        setCloudStatus('synced', 'pulled newer data from Drive');
+        return false; // don't continue with the stale write
+      }
+    }
+  }
   setCloudStatus('syncing');
   try {
     const savedAt = new Date().toISOString();
     const stateJson = JSON.stringify({ version: 2, savedAt, data: _buildV2Payload() }, null, 2);
     await gdriveWriteFile(gdriveFileId, stateJson);
     cloudLastSavedAt = savedAt; // must match the stateJson savedAt so pollCloudOnce doesn't re-pull our own write
+    cloudLastModifiedTime = await _getDriveModifiedTime(); // remember Drive's new modifiedTime
     await runDriveBackups(stateJson);
     setCloudStatus('synced');
     return true;
@@ -3407,6 +3445,7 @@ async function loadFromDrive() {
       }
     }
     cloudLastSavedAt = parsed.savedAt || null;
+    cloudLastModifiedTime = await _getDriveModifiedTime();
     clearDataProtected();
     setCloudStatus('synced');
     return parsed;
