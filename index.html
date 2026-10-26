@@ -2019,7 +2019,7 @@
 // =================================================================
 // Bump this on every shipped change so the header shows which version is live.
 // Format: YYYY-MM-DD.<short description of the change>
-const APP_BUILD = '2026-10-26.03';
+const APP_BUILD = '2026-10-26.04';
 const STORAGE_KEY = 'kevin-gtd-v1';
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
@@ -3367,10 +3367,14 @@ async function saveToDrive(force = false) {
   // Phase 6b guard: if Drive's modifiedTime has advanced since we last saw it,
   // SOMEONE ELSE wrote to Drive (typically the AI co-pilot editing the file).
   // Pull-merge before writing so we don't blow away their changes.
-  if (!force && cloudLastModifiedTime) {
+  // Phase 6d: if we have no baseline modifiedTime (silent token fetch failed on
+  // boot, so initDriveOnLoad never fired), treat Drive as authoritative and
+  // pull it before writing — don't assume stale local state is current.
+  if (!force && gdriveFileId) {
     const driveMod = await _getDriveModifiedTime();
-    if (driveMod && driveMod > cloudLastModifiedTime) {
-      setCloudStatus('syncing', 'Drive updated elsewhere — pulling first');
+    const needsPull = driveMod && (!cloudLastModifiedTime || driveMod > cloudLastModifiedTime);
+    if (needsPull) {
+      setCloudStatus('syncing', cloudLastModifiedTime ? 'Drive updated elsewhere — pulling first' : 'Pulling Drive state before first save');
       const loaded = await loadFromDrive();
       if (loaded?.data) {
         data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(loaded.data) };
@@ -3382,7 +3386,7 @@ async function saveToDrive(force = false) {
           localStorage.setItem(STORAGE_KEY + ':meta', JSON.stringify({ savedAt: loaded.savedAt }));
         } catch(e) {}
         render();
-        setCloudStatus('synced', 'pulled newer data from Drive');
+        setCloudStatus('synced', 'pulled from Drive');
         return false; // don't continue with the stale write
       }
     }
@@ -3689,12 +3693,14 @@ async function pollCloudOnce() {
     if (document.querySelector('.add-form.open')) return;
     if (waitingPromptForId || nextActionPromptForId || addingActionToProjectId) return;
     if (cloudSaveTimer) return;
+    // Phase 6d: use Drive's own modifiedTime (bumps on EVERY write, including
+    // out-of-band edits that don't touch the inner savedAt field) as the
+    // change-detection signal, not the inner savedAt — AI co-pilot edits can
+    // reach Drive without updating the inner savedAt.
+    const driveMod = await _getDriveModifiedTime();
+    if (driveMod && cloudLastModifiedTime && driveMod === cloudLastModifiedTime) return;
     const loaded = await loadFromDrive();
-    if (!loaded?.data || !loaded.savedAt) return;
-    // Only skip if Drive's current savedAt matches what we last pulled/pushed.
-    // Comparing against localStorage's savedAt is unreliable because routine
-    // save() calls bump it even when data hasn't been meaningfully mutated.
-    if (loaded.savedAt === cloudLastSavedAt) return;
+    if (!loaded?.data) return;
     data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(loaded.data) };
     syncBucketViews();
     cloudLastSavedAt = loaded.savedAt;
