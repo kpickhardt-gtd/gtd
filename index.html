@@ -2019,7 +2019,7 @@
 // =================================================================
 // Bump this on every shipped change so the header shows which version is live.
 // Format: YYYY-MM-DD.<short description of the change>
-const APP_BUILD = '2026-10-02.03';
+const APP_BUILD = '2026-10-26.01';
 const STORAGE_KEY = 'kevin-gtd-v1';
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
@@ -3367,6 +3367,28 @@ async function saveToDrive(force = false) {
 }
 
 // Load data from Drive
+// Last-ditch JSON repair for files that may have minor syntactic damage from
+// prior out-of-band edits. Tries a few targeted fixups: trim trailing junk,
+// drop a stray leading byte, strip null bytes, close an orphaned trailing
+// comma before `]` or `}`, and collapse `},\n{\n{` doubled openings. Returns
+// the parsed object on success, or null if we couldn't make it valid.
+function attemptJsonRepair(raw) {
+  if (typeof raw !== 'string' || !raw) return null;
+  const tries = [];
+  const clean = raw.replace(/\x00+/g, '').trim();
+  tries.push(clean);
+  // Trailing comma before closers
+  tries.push(clean.replace(/,(\s*[}\]])/g, '$1'));
+  // Doubled opening braces that can creep in from imprecise edits
+  tries.push(clean.replace(/(\{\s*)\{(\s*")/g, '$1$2'));
+  // Both fixes together
+  tries.push(clean.replace(/,(\s*[}\]])/g, '$1').replace(/(\{\s*)\{(\s*")/g, '$1$2'));
+  for (const t of tries) {
+    try { return JSON.parse(t); } catch (e) { /* keep trying */ }
+  }
+  return null;
+}
+
 async function loadFromDrive() {
   if (!gdriveFileId || !gdriveToken) return null;
   setCloudStatus('connecting');
