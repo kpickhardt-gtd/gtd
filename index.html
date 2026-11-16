@@ -993,24 +993,6 @@
     #mobile-home-btn { display: flex !important; }
     #mobile-menu-btn { display: flex !important; }
 
-    /* Quick-add and search move into the "More" drawer on mobile -- the
-       header has no room for a text button + an icon button alongside
-       home/menu/help. Only hide the trigger buttons (not their wrapper
-       divs), since the popup elements below still need to exist in the
-       DOM and be toggleable from the drawer's own buttons. */
-    #quick-add-btn, #global-search-btn { display: none !important; }
-    /* Center these as a fixed overlay instead of a small anchored dropdown,
-       since on mobile they're opened from the drawer (bottom of screen),
-       not from a button near where the popup would otherwise anchor. */
-    #quick-add-menu, #global-search-panel {
-      position: fixed !important;
-      top: 50% !important; left: 50% !important; right: auto !important;
-      transform: translate(-50%, -50%);
-      width: 90vw !important; max-width: 420px;
-      max-height: 80vh !important;
-      z-index: 2000 !important;
-    }
-
     /* Header: row 1 = title + buttons, row 2 = capture */
     header {
       display: grid;
@@ -1236,7 +1218,6 @@
         <div class="quick-add-option" onclick="quickAddOpen('project')" style="padding:9px 14px;cursor:pointer;font-size:13px;">📁 Project</div>
         <div class="quick-add-option" onclick="quickAddOpen('next')" style="padding:9px 14px;cursor:pointer;font-size:13px;border-top:1px solid var(--border);">✅ Next Action</div>
         <div class="quick-add-option" onclick="quickAddOpen('person')" style="padding:9px 14px;cursor:pointer;font-size:13px;border-top:1px solid var(--border);">👤 Person</div>
-        <div class="quick-add-option" onclick="quickAddOpen('timeentry')" style="padding:9px 14px;cursor:pointer;font-size:13px;border-top:1px solid var(--border);">⏱ Time Entry</div>
       </div>
     </div>
     <div id="global-search-wrap" style="position:relative;">
@@ -1267,7 +1248,6 @@
 
 <nav id="nav">
   <div class="nav-section-label">Capture</div>
-  <button data-tab="briefing">☀️ Morning Brief</button>
   <button data-tab="dashboard" class="active">Dashboard</button>
   <button data-tab="focus"><span>Focus</span> <span class="count" id="count-focus">0</span></button>
   <button data-tab="inbox"><span>Inbox</span> <span class="count" id="count-inbox">0</span></button>
@@ -1281,7 +1261,6 @@
   <button data-tab="horizons">Goals &amp; Horizons</button>
   <button data-tab="areas">Areas of Focus</button>
   <button data-tab="people"><span>People</span> <span class="count" id="count-people">0</span></button>
-  <button data-tab="timeentries"><span>⏱ Time Entries</span> <span class="count" id="count-timeentries">0</span></button>
   <div class="nav-section-label">Reflect</div>
   <button data-tab="sessionlog"><span>Session Log</span> <span class="count" id="count-sessionlog">0</span></button>
   <button data-tab="review">Review</button>
@@ -1290,18 +1269,6 @@
 <main>
 
   <!-- ========== DASHBOARD ========== -->
-  <section class="section" id="section-briefing">
-    <div class="section-header">
-      <h2>☀️ Morning Brief</h2>
-    </div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">
-      <a href="#" onclick="window.open('morning-brief.html?t=' + Date.now(), '_blank');return false;">Open in a new tab</a>
-      &nbsp;·&nbsp;
-      <a href="#" onclick="openHelp('morning-brief');return false;">How this works</a>
-    </div>
-    <iframe id="morning-brief-frame" src="morning-brief.html" title="Morning Brief" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" style="width:100%;height:75vh;border:1px solid var(--border-strong);border-radius:8px;background:#fff;"></iframe>
-  </section>
-
   <section class="section active" id="section-dashboard">
     <div class="section-header">
       <div>
@@ -1432,11 +1399,6 @@
           <option value="">— No project —</option>
         </select>
       </div>
-      <div class="form-row">
-        <select id="next-client" onchange="handleClientSelectChange(this)" title="Client (optional) — auto-filled from the project's client, but you can override it">
-          <option value="">— Client —</option>
-        </select>
-      </div>
       <div id="new-project-inline" style="display:none;margin:4px 0 8px;padding:10px 12px;background:var(--surface-raised,#f9fafb);border:1px solid var(--border-strong);border-radius:8px;">
         <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;">New project</div>
         <div class="form-row">
@@ -1517,16 +1479,11 @@
           <option value="completed">Completed</option>
         </select>
       </div>
-      <div class="form-row">
-        <select id="project-priority">
-          <option value="med">Priority: Medium</option>
-          <option value="high">Priority: High</option>
-          <option value="low">Priority: Low</option>
-        </select>
-        <select id="project-client" onchange="handleClientSelectChange(this)" title="Client (optional) — actions created under this project will inherit this client automatically">
-          <option value="">— Client —</option>
-        </select>
-      </div>
+      <select id="project-priority">
+        <option value="med">Priority: Medium</option>
+        <option value="high">Priority: High</option>
+        <option value="low">Priority: Low</option>
+      </select>
       <textarea id="project-notes" placeholder="Notes, links, context (optional)" rows="2"></textarea>
       <div class="person-picker-wrapper">
         <label>People (optional) — actions on this project can inherit these later</label>
@@ -1717,73 +1674,6 @@
     </div>
     <div id="people-filter-row" style="display:flex;gap:8px;align-items:center;margin-bottom:12px;font-size:13px;flex-wrap:wrap;"></div>
     <div id="list-people"></div>
-  </section>
-
-  <!-- ========== TIME ENTRIES (billable work) ========== -->
-  <section class="section" id="section-timeentries">
-    <div class="section-header">
-      <div>
-        <h2>⏱ Time Entries</h2>
-        <div class="blurb">Billable time logged against clients, optionally tied to a project and action. Filter below for invoicing.</div>
-      </div>
-      <button class="btn" onclick="toggleForm('timeentries')">+ Time Entry</button>
-    </div>
-
-    <details id="te-clients-panel" style="margin-bottom:14px;border:1px solid var(--border-strong);border-radius:8px;padding:10px 14px;">
-      <summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);">👥 Manage Clients</summary>
-      <div style="margin-top:10px;">
-        <div class="form-row">
-          <input type="text" id="te-new-client-name" placeholder="Client name" onkeydown="if(event.key==='Enter')addClient()" />
-          <button class="btn" onclick="addClient()">+ Add Client</button>
-        </div>
-        <div id="te-clients-list" style="margin-top:10px;"></div>
-      </div>
-    </details>
-
-    <div class="add-form" id="form-timeentries">
-      <div class="form-row">
-        <input type="date" id="te-date" title="Date work was performed" />
-        <select id="te-client" onchange="handleClientSelectChange(this)">
-          <option value="">— Client —</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <select id="te-project" onchange="handleTeProjectChange(this)">
-          <option value="">— No project —</option>
-        </select>
-        <select id="te-action" onchange="handleTeActionChange(this)">
-          <option value="">— No action —</option>
-        </select>
-      </div>
-      <div class="form-row" style="align-items:center;gap:16px;">
-        <label style="font-size:13px;display:flex;align-items:center;gap:4px;"><input type="radio" name="te-mode" value="range" onchange="toggleTeMode('range')" /> Clock times</label>
-        <label style="font-size:13px;display:flex;align-items:center;gap:4px;"><input type="radio" name="te-mode" value="duration" checked onchange="toggleTeMode('duration')" /> Duration</label>
-      </div>
-      <div class="form-row" id="te-range-row" style="display:none;">
-        <input type="time" id="te-start" onchange="recalcTeRangeHours()" />
-        <input type="time" id="te-end" onchange="recalcTeRangeHours()" />
-        <span id="te-range-hours-display" style="font-size:13px;color:var(--muted);align-self:center;"></span>
-      </div>
-      <div class="form-row" id="te-duration-row">
-        <input type="number" id="te-duration" placeholder="Hours (e.g. 2.5)" step="0.1" min="0" />
-      </div>
-      <textarea id="te-description" placeholder="Description of work done" rows="2"></textarea>
-      <div class="form-row">
-        <select id="te-billing">
-          <option value="unbilled">Unbilled</option>
-          <option value="invoiced">Invoiced</option>
-          <option value="paid">Paid</option>
-        </select>
-      </div>
-      <div class="form-actions">
-        <button class="btn secondary" onclick="toggleForm('timeentries')">Cancel</button>
-        <button class="btn" onclick="saveTimeEntry()">Add</button>
-      </div>
-    </div>
-
-    <div id="te-filter-row" style="display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:13px;flex-wrap:wrap;"></div>
-    <div id="te-summary-line" style="font-size:13px;color:var(--muted);margin-bottom:10px;"></div>
-    <div id="list-timeentries"></div>
   </section>
 
   <section class="section" id="section-horizons">
@@ -2019,7 +1909,7 @@
 // =================================================================
 // Bump this on every shipped change so the header shows which version is live.
 // Format: YYYY-MM-DD.<short description of the change>
-const APP_BUILD = '2026-10-26.04';
+const APP_BUILD = '2026-09-08.drive-backup-naming-retention-rewrite';
 const STORAGE_KEY = 'kevin-gtd-v1';
 
 // DEFAULT_DATA: empty seed. v2 shape (items[] + areas[]).
@@ -2027,8 +1917,6 @@ const DEFAULT_DATA = {
   items: [],
   areas: [],
   people: [],
-  clients: [],
-  timeentries: [],
   nextIdCounters: {},
   reviewState: { daily: {}, weekly: {}, monthly: {} },
   horizons: {},
@@ -2255,31 +2143,6 @@ const HELP_DOCS_FALLBACK = [
 </ul>
 <h3>Waiting For → Next Action round-trip</h3>
 <p>When a Waiting For item is resolved, you can convert it back to a Next Action directly from the list. The conversion preserves provenance notes so you know where the action came from.</p>
-    `
-  },
-  {
-    id: 'morning-brief',
-    title: 'Morning Brief',
-    updated: 'September 2026',
-    body: `
-<h2>Morning Brief</h2>
-<p class="help-subtitle">How the ☀️ Morning Brief tab stays current, and what to check if it doesn't.</p>
-<p>The Morning Brief tab shows a daily AI-generated briefing (calendar, email, and chat context) inline, without leaving the GTD system. It's a separate pipeline from the rest of the app's data — here's how it works.</p>
-<h3>The pipeline</h3>
-<ol>
-  <li>A scheduled local routine generates the brief each morning and saves it as <code>morning-brief.html</code> directly into the <strong>Kevin GTD Tasks</strong> Google Drive folder — a plain local file save, no network call.</li>
-  <li>A Google Apps Script trigger polls that folder every few minutes. When it detects the file changed, it pushes the new content to the <code>kpickhardt-gtd/gtd</code> GitHub repo automatically via the GitHub API.</li>
-  <li>Since the GTD app itself is hosted on GitHub Pages from that same repo, the Morning Brief tab loads <code>morning-brief.html</code> as a same-origin file — no cross-site restrictions, no separate publishing step.</li>
-</ol>
-<h3>Cache-busting</h3>
-<p>Every time you open the tab, the app reloads the frame with a fresh, uniquely-timestamped URL. This defeats normal browser/CDN caching so you always see the latest push rather than a stale cached copy from an earlier visit.</p>
-<h3>If it looks stale or empty</h3>
-<ul>
-  <li>Confirm the local routine actually ran this morning (check the computer it's scheduled on was awake with Claude Desktop open).</li>
-  <li>Check the Apps Script project's <strong>Executions</strong> log for the polling trigger — a failed run there means the GitHub push didn't happen.</li>
-  <li>Check the <code>kpickhardt-gtd/gtd</code> repo directly on GitHub — does <code>morning-brief.html</code> show today's commit?</li>
-  <li>GitHub Pages can take 30–90 seconds to rebuild after a push — give it a moment before assuming something's broken.</li>
-</ul>
     `
   },
   {
@@ -2646,7 +2509,6 @@ function addItemToBucket(bucket, fields) {
     completed: f.completed || null,
     priority: f.priority || 'med',
     projectId: f.projectId || null,
-    clientId: f.clientId || null,
     areaId,
     dueDate,
     scheduledAt: f.scheduledAt || null,
@@ -2835,8 +2697,6 @@ function _buildV2Payload() {
     items,
     areas,
     people:          data.people || [],
-    clients:         data.clients || [],
-    timeentries:     data.timeentries || [],
     nextIdCounters:  data.nextIdCounters || {},
     reviewState:     data.reviewState || { daily: {}, weekly: {}, monthly: {} },
     horizons:        data.horizons || {},
@@ -2892,28 +2752,8 @@ function setCloudFolderName(name) {
   }
   setCloudStatus(cloudSyncStatus);
 }
-
-// A stored folder "name" of 20+ chars that's only Drive-id characters is almost
-// certainly the folder ID — the user never typed a label in the picker, and the
-// picker fell back to id. Fetch the human-readable name from Drive and replace.
-function _looksLikeDriveId(s) {
-  return typeof s === 'string' && s.length >= 20 && /^[A-Za-z0-9_-]+$/.test(s);
-}
-async function _resolveDriveFolderName() {
-  if (!gdriveFolderId || !gdriveToken) return;
-  if (cloudFolderName && !_looksLikeDriveId(cloudFolderName)) return;
-  try {
-    const resp = await gdriveFetch(`https://www.googleapis.com/drive/v3/files/${gdriveFolderId}?fields=name`);
-    if (!resp.ok) return;
-    const j = await resp.json();
-    if (j && j.name) {
-      setCloudFolderName(j.name);
-    }
-  } catch (e) { /* best-effort — leave stored name as-is */ }
-}
 let cloudSaveTimer = null;
 let cloudLastSavedAt = null;
-let cloudLastModifiedTime = null; // Drive's modifiedTime of the last version we read/wrote — used to detect out-of-band edits (e.g. AI co-pilot)
 let cloudBootstrapped = false; // true once we've successfully loaded from cloud (or confirmed no cloud file exists)
 let cloudDataProtected = false;
 let cloudDataProtectedMsg = '';
@@ -2950,30 +2790,55 @@ function setCloudStatus(s, msg) {
       synced: '✓ Synced',
       syncing: '↻ Saving…',
       error: '⚠ Sync error',
+      needs_reconnect: '↺ Tap to reconnect',
     };
     const cls = {
       init: 'status-init', no_folder: 'status-warn',
       connecting: 'status-init', synced: 'status-ok',
-      syncing: 'status-init', error: 'status-err'
+      syncing: 'status-init', error: 'status-err',
+      needs_reconnect: 'status-warn'
     };
-    // Hide folder name in the chip if it still looks like a raw Drive ID
-    // (will be resolved to a human-readable name in the background on reconnect)
-    const prettyFolder = cloudFolderName && !_looksLikeDriveId(cloudFolderName) ? cloudFolderName : null;
-    el.textContent = (labels[s] || s) + (msg ? ' — ' + msg : (prettyFolder && s === 'synced' ? ' · ' + prettyFolder : ''));
+    el.textContent = (labels[s] || s) + (msg ? ' — ' + msg : (cloudFolderName && s === 'synced' ? ' · ' + cloudFolderName : ''));
     el.className = 'cloud-sync-indicator ' + (cls[s] || '');
+    // Make the chip itself clickable for one-tap reconnect on Safari
+    if (s === 'needs_reconnect') {
+      el.style.cursor = 'pointer';
+      el.onclick = () => connectGoogleDrive();
+      el.title = 'Tap to reconnect to Google Drive';
+    } else {
+      el.style.cursor = '';
+      el.onclick = null;
+      el.title = '';
+    }
   }
   const info = document.getElementById('cloud-folder-info');
   if (info) {
-    const displayFolder = cloudFolderName && !_looksLikeDriveId(cloudFolderName) ? cloudFolderName : (cloudFolderName ? 'Google Drive folder' : null);
-    info.textContent = displayFolder
-      ? 'Connected folder: ' + displayFolder + (cloudLastSavedAt ? ' · last saved ' + new Date(cloudLastSavedAt).toLocaleTimeString() : '')
+    info.textContent = cloudFolderName
+      ? 'Connected folder: ' + cloudFolderName + (cloudLastSavedAt ? ' · last saved ' + new Date(cloudLastSavedAt).toLocaleTimeString() : '')
       : 'No folder connected yet. Click "🔗 Connect cloud folder" to enable auto-sync.';
   }
   // Show sticky warning banner when Drive is configured but saves are falling back to local-only
   const banner = document.getElementById('sync-warning-banner');
   if (banner) {
     const localOnly = s === 'error' && gdriveFileId && !gdriveToken;
-    banner.style.display = localOnly ? 'block' : 'none';
+    const needsReconnect = s === 'needs_reconnect';
+    if (needsReconnect) {
+      // Soft amber banner — session expired but data is safe locally
+      banner.style.display = 'block';
+      banner.style.background = '#fef3c7';
+      banner.style.color = '#92400e';
+      banner.innerHTML = '↺ Drive session expired — your data is safe locally. ' +
+        '<button onclick="connectGoogleDrive()" style="margin-left:12px;background:#92400e;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-weight:700;cursor:pointer;">Reconnect</button>';
+    } else if (localOnly) {
+      // Red banner — real sync error
+      banner.style.display = 'block';
+      banner.style.background = '#dc2626';
+      banner.style.color = '#fff';
+      banner.innerHTML = '⚠ Changes saved locally only — not synced to Drive. ' +
+        '<button onclick="connectGoogleDrive()" style="margin-left:12px;background:#fff;color:#dc2626;border:none;border-radius:6px;padding:4px 12px;font-weight:700;cursor:pointer;">Reconnect now</button>';
+    } else {
+      banner.style.display = 'none';
+    }
   }
 }
 
@@ -3107,7 +2972,6 @@ const GDRIVE_FOLDER_ID_KEY= STORAGE_KEY + ':gdriveFolderId';
 
 let gdriveToken       = null;
 let gdriveTokenClient = null;
-let gdriveRefreshTimer = null;
 let gdriveFileId      = localStorage.getItem(GDRIVE_FILE_ID_KEY)   || null;
 let gdriveFolderId    = localStorage.getItem(GDRIVE_FOLDER_ID_KEY) || null;
 let driveSyncActive   = !!gdriveFileId;
@@ -3151,36 +3015,10 @@ async function gdriveGetToken(interactive = true) {
       if (timer) clearTimeout(timer);
       if (resp.error) { reject(new Error(resp.error_description || resp.error)); return; }
       gdriveToken = resp.access_token;
-      scheduleGdriveTokenRefresh(resp.expires_in);
       resolve(resp.access_token);
     };
     gdriveTokenClient.requestAccessToken({ prompt: interactive ? 'select_account' : '' });
   });
-}
-
-// Google's access tokens from this flow are short-lived (typically ~1 hour)
-// and this flow never issues a refresh token -- that's a Google platform
-// limit for security reasons, not something this app can configure around
-// without adding a backend server. What we CAN do: refresh quietly in the
-// background well before it actually expires, instead of waiting for a
-// request to fail first. This won't eliminate reconnects (silent refresh
-// can still fail if the browser blocks third-party cookies/storage, or the
-// tab was closed and reopened), but it should make expiration a non-event
-// during active use rather than something you notice mid-task.
-function scheduleGdriveTokenRefresh(expiresInSeconds) {
-  if (gdriveRefreshTimer) clearTimeout(gdriveRefreshTimer);
-  if (!expiresInSeconds) return;
-  // Refresh 5 minutes before actual expiry, with a sane floor so we don't
-  // schedule something in the past if Google ever returns a short value.
-  const refreshInMs = Math.max((expiresInSeconds - 300), 30) * 1000;
-  gdriveRefreshTimer = setTimeout(() => {
-    gdriveGetToken(false).catch(() => {
-      // Silent refresh failed (e.g. third-party cookies blocked, session
-      // ended). Leave gdriveToken as-is; the next real request will hit a
-      // 401, trigger the existing reactive retry, and if that also fails,
-      // the UI's normal "reconnect" flow takes over as before.
-    });
-  }, refreshInMs);
 }
 
 // Fetch wrapper with automatic token refresh on 401
@@ -3230,9 +3068,7 @@ function gdrivePickFolder() {
       // Accept full Drive URL or bare ID — extract the ID either way
       const match = raw.match(/\/folders\/([a-zA-Z0-9_-]+)/);
       const id   = match ? match[1] : raw;
-      // Allow empty name — we'll resolve from Drive's folder metadata so the
-      // status chip shows "GTD Task Management" instead of a raw folder ID.
-      const name = overlay.querySelector('#gdrive-folder-name-input').value.trim() || '';
+      const name = overlay.querySelector('#gdrive-folder-name-input').value.trim() || id;
       if (!id) { overlay.querySelector('#gdrive-folder-id-input').style.borderColor = '#dc2626'; return; }
       cleanup();
       resolve({ id, name });
@@ -3252,6 +3088,25 @@ async function gdriveFindFile(folderId, filename) {
   const resp = await gdriveFetch(url);
   const json = await resp.json();
   return json.files?.[0] || null;
+}
+
+// List files in a Drive folder whose name starts with a prefix (used for
+// backup retention — lets us make delete/keep decisions off Drive's own
+// createdTime instead of anything tracked locally).
+async function gdriveListFiles(folderId, namePrefix) {
+  const q = `name contains '${namePrefix}' and '${folderId}' in parents and trashed=false`;
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,createdTime)&orderBy=createdTime desc&pageSize=1000&spaces=drive`;
+  const resp = await gdriveFetch(url);
+  if (!resp.ok) throw new Error('Drive list failed: ' + resp.status);
+  const json = await resp.json();
+  // "contains" is a substring match server-side; enforce prefix client-side.
+  return (json.files || []).filter(f => f.name.startsWith(namePrefix));
+}
+
+// Permanently delete a Drive file (used for backup retention pruning).
+async function gdriveDeleteFile(fileId) {
+  const resp = await gdriveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, { method: 'DELETE' });
+  if (!resp.ok && resp.status !== 404) throw new Error('Drive delete failed: ' + resp.status);
 }
 
 // Read a Drive file's text content
@@ -3294,46 +3149,76 @@ async function gdriveCreateFile(folderId, filename, content) {
   return (await resp.json()).id;
 }
 
-// Rolling backup schedule: 30 min, 1 hr, 1 day, 1 week
-const BACKUP_SCHEDULES = [
-  { name: '30min', filename: 'gtd-backup-30min.json',  intervalMs: 30 * 60 * 1000 },
-  { name: '1hr',   filename: 'gtd-backup-1hr.json',    intervalMs: 60 * 60 * 1000 },
-  { name: '1day',  filename: 'gtd-backup-1day.json',   intervalMs: 24 * 60 * 60 * 1000 },
-  { name: '1week', filename: 'gtd-backup-1week.json',  intervalMs: 7 * 24 * 60 * 60 * 1000 },
+// Rolling backups: one uniquely-named, timestamped snapshot per interval,
+// with tiered retention pruning so the folder doesn't grow forever.
+//
+// Replaces the old fixed-slot scheme (gtd-backup-30min.json / -1hr / -1day
+// / -1week, each overwritten in place via a Drive file ID cached in
+// localStorage). That scheme silently forked into duplicate Drive files
+// whenever localStorage lost track of an ID — a different browser, a new
+// machine, a cleared cache — because Drive allows multiple files with the
+// same name; nothing ever deleted the orphaned copy. By 2026-09-08 that had
+// piled up into ~5 duplicate files per tier with no cleanup.
+//
+// This version needs nothing tracked locally to decide what's safe to
+// delete: every backup gets a unique name, and retention reads Drive's own
+// createdTime off a folder listing each time it runs.
+const BACKUP_FILE_PREFIX = 'gtd-backup-';
+const BACKUP_MIN_INTERVAL_MS = 30 * 60 * 1000; // new snapshot at most every 30 min
+const BACKUP_LAST_RUN_KEY = STORAGE_KEY + ':lastDriveBackupAt';
+
+// Tiered retention, same shape as the old OneDrive backup task's scheme
+// (all last 4h, hourly 4-24h, daily 1-7d, weekly 7-28d, monthly beyond) —
+// keep everything inside `withinMs`, then keep at most one snapshot per
+// `bucketMs` beyond that.
+const BACKUP_RETENTION_TIERS = [
+  { withinMs: 4  * 60 * 60 * 1000,      bucketMs: 0 },                        // last 4h: keep all
+  { withinMs: 24 * 60 * 60 * 1000,      bucketMs: 60 * 60 * 1000 },           // 4-24h: hourly
+  { withinMs: 7  * 24 * 60 * 60 * 1000, bucketMs: 24 * 60 * 60 * 1000 },      // 1-7d: daily
+  { withinMs: 28 * 24 * 60 * 60 * 1000, bucketMs: 7 * 24 * 60 * 60 * 1000 },  // 7-28d: weekly
+  { withinMs: Infinity,                 bucketMs: 30 * 24 * 60 * 60 * 1000 }, // beyond: monthly
 ];
 
-// Time-based rolling backups — same schedule as FSA version but writes to Drive
+function backupTimestampSuffix(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
+// Given Drive-listed backup files ({id, name, createdTime}), return the ones
+// that fall outside the retention scheme and should be deleted. Newest file
+// in each bucket wins; older ones in the same bucket are pruned.
+function pruneBackupList(files, now = Date.now()) {
+  const sorted = [...files].sort((a, b) => new Date(b.createdTime) - new Date(a.createdTime));
+  const seenBuckets = new Set();
+  const toDelete = [];
+  for (const f of sorted) {
+    const age = now - new Date(f.createdTime).getTime();
+    const tier = BACKUP_RETENTION_TIERS.find(t => age <= t.withinMs);
+    if (!tier || tier.bucketMs === 0) continue; // inside the "keep all" window
+    const bucketKey = tier.bucketMs + ':' + Math.floor(age / tier.bucketMs);
+    if (seenBuckets.has(bucketKey)) toDelete.push(f);
+    else seenBuckets.add(bucketKey);
+  }
+  return toDelete;
+}
+
 async function runDriveBackups(stateJson) {
   if (!gdriveFolderId || !gdriveToken) return;
   const now = Date.now();
-  for (const tier of BACKUP_SCHEDULES) {
-    const lastRunKey = STORAGE_KEY + ':backup:' + tier.name;
-    if (now - parseInt(localStorage.getItem(lastRunKey) || '0', 10) < tier.intervalMs) continue;
-    try {
-      const idKey = STORAGE_KEY + ':gdriveBackupId:' + tier.name;
-      let bid = localStorage.getItem(idKey);
-      if (bid) {
-        await gdriveWriteFile(bid, stateJson);
-      } else {
-        bid = await gdriveCreateFile(gdriveFolderId, tier.filename, stateJson);
-        localStorage.setItem(idKey, bid);
-      }
-      localStorage.setItem(lastRunKey, now.toString());
-    } catch(e) { console.warn('Drive backup failed:', tier.filename, e.message); }
-  }
-}
-
-// Cheap check: fetch just the Drive file's modifiedTime so we can detect
-// out-of-band edits (e.g. AI co-pilot sessions writing directly to the file)
-// without downloading the whole payload.
-async function _getDriveModifiedTime() {
-  if (!gdriveFileId || !gdriveToken) return null;
+  if (now - parseInt(localStorage.getItem(BACKUP_LAST_RUN_KEY) || '0', 10) < BACKUP_MIN_INTERVAL_MS) return;
   try {
-    const resp = await gdriveFetch(`https://www.googleapis.com/drive/v3/files/${gdriveFileId}?fields=modifiedTime`);
-    if (!resp.ok) return null;
-    const j = await resp.json();
-    return j.modifiedTime || null;
-  } catch(e) { return null; }
+    const filename = BACKUP_FILE_PREFIX + backupTimestampSuffix(new Date(now)) + '.json';
+    await gdriveCreateFile(gdriveFolderId, filename, stateJson);
+    localStorage.setItem(BACKUP_LAST_RUN_KEY, now.toString());
+  } catch(e) { console.warn('Drive backup failed:', e.message); return; }
+  try {
+    const files = await gdriveListFiles(gdriveFolderId, BACKUP_FILE_PREFIX);
+    const stale = pruneBackupList(files, now);
+    for (const f of stale) {
+      try { await gdriveDeleteFile(f.id); }
+      catch(e) { console.warn('Drive backup prune failed:', f.name, e.message); }
+    }
+  } catch(e) { console.warn('Drive backup prune listing failed:', e.message); }
 }
 
 // Save current data to Drive
@@ -3361,76 +3246,25 @@ async function saveToDrive(force = false) {
   } catch(e) {}
   if (!gdriveFileId || !gdriveToken) {
     // No token yet — data is safe in localStorage; Drive sync will push on reconnect
-    setCloudStatus('error', 'session expired — click 🔗 Connect to sync');
+    setCloudStatus('needs_reconnect');
     return false;
-  }
-  // Phase 6b guard: if Drive's modifiedTime has advanced since we last saw it,
-  // SOMEONE ELSE wrote to Drive (typically the AI co-pilot editing the file).
-  // Pull-merge before writing so we don't blow away their changes.
-  // Phase 6d: if we have no baseline modifiedTime (silent token fetch failed on
-  // boot, so initDriveOnLoad never fired), treat Drive as authoritative and
-  // pull it before writing — don't assume stale local state is current.
-  if (!force && gdriveFileId) {
-    const driveMod = await _getDriveModifiedTime();
-    const needsPull = driveMod && (!cloudLastModifiedTime || driveMod > cloudLastModifiedTime);
-    if (needsPull) {
-      setCloudStatus('syncing', cloudLastModifiedTime ? 'Drive updated elsewhere — pulling first' : 'Pulling Drive state before first save');
-      const loaded = await loadFromDrive();
-      if (loaded?.data) {
-        data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(loaded.data) };
-        syncBucketViews();
-        cloudLastSavedAt = loaded.savedAt || cloudLastSavedAt;
-        cloudLastModifiedTime = driveMod;
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-          localStorage.setItem(STORAGE_KEY + ':meta', JSON.stringify({ savedAt: loaded.savedAt }));
-        } catch(e) {}
-        render();
-        setCloudStatus('synced', 'pulled from Drive');
-        return false; // don't continue with the stale write
-      }
-    }
   }
   setCloudStatus('syncing');
   try {
-    const savedAt = new Date().toISOString();
-    const stateJson = JSON.stringify({ version: 2, savedAt, data: _buildV2Payload() }, null, 2);
+    const stateJson = JSON.stringify({ version: 2, savedAt: new Date().toISOString(), data: _buildV2Payload() }, null, 2);
     await gdriveWriteFile(gdriveFileId, stateJson);
-    cloudLastSavedAt = savedAt; // must match the stateJson savedAt so pollCloudOnce doesn't re-pull our own write
-    cloudLastModifiedTime = await _getDriveModifiedTime(); // remember Drive's new modifiedTime
+    cloudLastSavedAt = new Date().toISOString();
     await runDriveBackups(stateJson);
     setCloudStatus('synced');
     return true;
   } catch(e) {
-    const msg = e.message === 'auth-expired' ? 'session expired — click 🔗 Connect to sync' : (e.message || 'save failed');
-    setCloudStatus('error', msg);
+    if (e.message === 'auth-expired') { setCloudStatus('needs_reconnect'); return false; }
+    setCloudStatus('error', e.message || 'save failed');
     return false;
   }
 }
 
 // Load data from Drive
-// Last-ditch JSON repair for files that may have minor syntactic damage from
-// prior out-of-band edits. Tries a few targeted fixups: trim trailing junk,
-// drop a stray leading byte, strip null bytes, close an orphaned trailing
-// comma before `]` or `}`, and collapse `},\n{\n{` doubled openings. Returns
-// the parsed object on success, or null if we couldn't make it valid.
-function attemptJsonRepair(raw) {
-  if (typeof raw !== 'string' || !raw) return null;
-  const tries = [];
-  const clean = raw.replace(/\x00+/g, '').trim();
-  tries.push(clean);
-  // Trailing comma before closers
-  tries.push(clean.replace(/,(\s*[}\]])/g, '$1'));
-  // Doubled opening braces that can creep in from imprecise edits
-  tries.push(clean.replace(/(\{\s*)\{(\s*")/g, '$1$2'));
-  // Both fixes together
-  tries.push(clean.replace(/,(\s*[}\]])/g, '$1').replace(/(\{\s*)\{(\s*")/g, '$1$2'));
-  for (const t of tries) {
-    try { return JSON.parse(t); } catch (e) { /* keep trying */ }
-  }
-  return null;
-}
-
 async function loadFromDrive() {
   if (!gdriveFileId || !gdriveToken) return null;
   setCloudStatus('connecting');
@@ -3449,13 +3283,12 @@ async function loadFromDrive() {
       }
     }
     cloudLastSavedAt = parsed.savedAt || null;
-    cloudLastModifiedTime = await _getDriveModifiedTime();
     clearDataProtected();
     setCloudStatus('synced');
     return parsed;
   } catch(e) {
-    const msg = e.message === 'auth-expired' ? 'session expired — click Reconnect' : (e.message || 'load failed');
-    setCloudStatus('error', msg);
+    if (e.message === 'auth-expired') { setCloudStatus('needs_reconnect'); return null; }
+    setCloudStatus('error', e.message || 'load failed');
     return null;
   }
 }
@@ -3507,33 +3340,39 @@ async function connectGoogleDrive() {
       driveSyncActive = true;
       cloudBootstrapped = true;
       clearDataProtected();
+      // Check if local cache is newer than Drive (unsaved changes while token was expired)
+      let localSavedAt = '';
+      try { const m = localStorage.getItem(STORAGE_KEY + ':meta'); if (m) localSavedAt = JSON.parse(m).savedAt || ''; } catch(e) {}
       const driveState = await loadFromDrive();
-      // On explicit reconnect, Drive is the source of truth. localStorage's savedAt
-      // bumps every time save() runs for ANY reason (even non-mutating re-persists),
-      // so comparing it against Drive's savedAt is unreliable. If Drive has valid
-      // content, we load it — this preserves out-of-band edits (e.g. AI co-pilot
-      // sessions that wrote via file APIs). The only time we'd lose local changes
-      // is if Drive was unreachable but we had unpushed edits; in that case the
-      // existing debouncedCloudSave would retry when the connection returned.
-      if (driveState?.data) {
+      const driveSavedAt = driveState?.savedAt || '';
+      if (driveState?.data && driveSavedAt >= localSavedAt) {
+        // Drive is current or newer — load it
         data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(driveState.data) };
         syncBucketViews();
         _persistAndRender(driveState.savedAt);
-        cloudLastSavedAt = driveState.savedAt || cloudLastSavedAt;
-        setCloudStatus('synced', 'pulled fresh from Drive');
-        // Try to resolve a friendlier folder name if we only have the ID stored
-        _resolveDriveFolderName();
-        startCloudPolling();
-        return;
+      } else if (driveState?.data) {
+        // Local cache is newer — push it up, but ONLY if it's not default sample data
+        if (looksLikeDefaultData(data)) {
+          // Drive loaded real data but local is "newer" defaults — something cleared localStorage.
+          // Trust Drive, not the stale local defaults.
+          data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(driveState.data) };
+          syncBucketViews();
+          _persistAndRender(driveState.savedAt);
+        } else {
+          await saveToDrive(true);
+        }
+      } else {
+        // Drive load failed entirely — NEVER push defaults to Drive in this case
+        if (looksLikeDefaultData(data)) {
+          setCloudStatus('error', 'Drive load failed — your data is safe in Drive. Reload the page to try again.');
+          driveSyncActive = false;
+          cloudBootstrapped = false;
+          return;
+        }
+        // Local data is real — push it up
+        await saveToDrive(true);
       }
-      // Drive load failed — don't risk overwriting Drive with potentially stale local data
-      if (looksLikeDefaultData(data)) {
-        setCloudStatus('error', 'Drive load failed — your data is safe in Drive. Reload the page to try again.');
-        driveSyncActive = false;
-        cloudBootstrapped = false;
-        return;
-      }
-      setCloudStatus('error', 'Drive load failed — using local cache; next save will retry');
+      setCloudStatus('synced', 'reconnected');
       startCloudPolling();
       return;
     }
@@ -3631,7 +3470,7 @@ async function initDriveOnLoad() {
     console.warn('Drive auto-reconnect failed:', e.message);
     // Keep driveSyncActive true so the Reconnect button is visible
     driveSyncActive = !!gdriveFileId;
-    setCloudStatus('error', 'Drive session expired — click Reconnect');
+    setCloudStatus('needs_reconnect');
   }
   return false;
 }
@@ -3641,10 +3480,8 @@ function _activateDrive(fileId, folderId, folderName) {
   gdriveFileId   = fileId;   localStorage.setItem(GDRIVE_FILE_ID_KEY,   fileId);
   gdriveFolderId = folderId; localStorage.setItem(GDRIVE_FOLDER_ID_KEY, folderId);
   driveSyncActive = true;
-  setCloudFolderName(folderName || '');
+  setCloudFolderName(folderName);
   clearDataProtected();
-  // If the stored name is empty or looks like a Drive ID, ask Drive for the real name
-  if (!folderName || _looksLikeDriveId(folderName)) _resolveDriveFolderName();
 }
 function _persistAndRender(savedAt) {
   try {
@@ -3693,14 +3530,11 @@ async function pollCloudOnce() {
     if (document.querySelector('.add-form.open')) return;
     if (waitingPromptForId || nextActionPromptForId || addingActionToProjectId) return;
     if (cloudSaveTimer) return;
-    // Phase 6d: use Drive's own modifiedTime (bumps on EVERY write, including
-    // out-of-band edits that don't touch the inner savedAt field) as the
-    // change-detection signal, not the inner savedAt — AI co-pilot edits can
-    // reach Drive without updating the inner savedAt.
-    const driveMod = await _getDriveModifiedTime();
-    if (driveMod && cloudLastModifiedTime && driveMod === cloudLastModifiedTime) return;
     const loaded = await loadFromDrive();
-    if (!loaded?.data) return;
+    if (!loaded?.data || !loaded.savedAt) return;
+    let localSavedAt = '';
+    try { const m = localStorage.getItem(STORAGE_KEY + ':meta'); if (m) localSavedAt = JSON.parse(m).savedAt || ''; } catch(e) {}
+    if (loaded.savedAt <= localSavedAt) return;
     data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(loaded.data) };
     syncBucketViews();
     cloudLastSavedAt = loaded.savedAt;
@@ -3734,9 +3568,13 @@ async function pollCloudOnce() {
     let parsed;
     try { parsed = JSON.parse(text); } catch(e) { return; } // Silent fail; next poll will retry
     if (!parsed.savedAt || !parsed.data) return;
-    // Compare against the last Drive timestamp we actually saw, not localStorage's
-    // savedAt — routine save() calls bump localSavedAt even without real changes.
-    if (parsed.savedAt === cloudLastSavedAt) return; // Already up to date
+    // Compare with what we last loaded/saved
+    let localSavedAt = '';
+    try {
+      const meta = localStorage.getItem(STORAGE_KEY + ':meta');
+      if (meta) localSavedAt = JSON.parse(meta).savedAt || '';
+    } catch(e) {}
+    if (parsed.savedAt <= localSavedAt) return; // Already up to date
     // Cloud is newer — apply
     setCloudStatus('connecting', 'pulling update…');
     data = { ...clone(DEFAULT_DATA), ...migrateV1ToV2(parsed.data) };
@@ -3802,10 +3640,9 @@ async function disconnectCloudFolder() {
   if (driveSyncActive) {
     driveSyncActive = false;
     gdriveFileId = null; gdriveFolderId = null; gdriveToken = null;
-    if (gdriveRefreshTimer) { clearTimeout(gdriveRefreshTimer); gdriveRefreshTimer = null; }
     localStorage.removeItem(GDRIVE_FILE_ID_KEY);
     localStorage.removeItem(GDRIVE_FOLDER_ID_KEY);
-    BACKUP_SCHEDULES.forEach(t => localStorage.removeItem(STORAGE_KEY + ':gdriveBackupId:' + t.name));
+    localStorage.removeItem(BACKUP_LAST_RUN_KEY);
   }
   cloudFolderHandle = null;
   setCloudFolderName(null);
@@ -3992,18 +3829,8 @@ document.querySelectorAll('nav button').forEach(btn => {
     // Keep the shared "next" form visible with the tab if it's open and the
     // user hops between Next Actions and Focus (both show "next" items).
     if (tab === 'next' || tab === 'focus') relocateNextForm();
-    // The Morning Brief iframe only loads once by default -- switching tabs
-    // is just a CSS show/hide, it never re-fetches. Force a fresh load with
-    // a cache-busting query param every time this tab is opened, since
-    // browsers and GitHub's CDN otherwise happily serve yesterday's cached copy.
-    if (tab === 'briefing') refreshMorningBrief();
   });
 });
-
-function refreshMorningBrief() {
-  const frame = document.getElementById('morning-brief-frame');
-  if (frame) frame.src = 'morning-brief.html?t=' + Date.now();
-}
 
 function restoreTab() {
   const last = localStorage.getItem(STORAGE_KEY + ':lastTab');
@@ -4041,10 +3868,6 @@ function resolveItemLocation(id) {
   if (log) return { bucket: 'sessionlog', record: log };
   const person = (data.people || []).find(x => x.id === id);
   if (person) return { bucket: 'people', record: person };
-  const entry = (data.timeentries || []).find(x => x.id === id);
-  if (entry) return { bucket: 'timeentries', record: entry };
-  const client = (data.clients || []).find(x => x.id === id);
-  if (client) return { bucket: 'timeentries', record: client };
   return null;
 }
 
@@ -4084,11 +3907,6 @@ function focusItem(id) {
     }
     if (target) {
       if (target.tagName === 'DETAILS') target.open = true;
-      // Open any ancestor collapsible panel too (e.g. a client row nested
-      // inside the collapsed "Manage Clients" <details>), or it'd highlight
-      // something the user can't actually see.
-      let anc = target.parentElement;
-      while (anc) { if (anc.tagName === 'DETAILS') anc.open = true; anc = anc.parentElement; }
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
       target.classList.add('focused-highlight');
       setTimeout(() => target.classList.remove('focused-highlight'), 2000);
@@ -4146,25 +3964,11 @@ function collectSearchableRecords() {
     const sub = [p.title, p.org].filter(Boolean).join(' · ');
     records.push({ id: p.id, bucket: 'people', typeLabel: 'Person', done: false, title: p.name || '(unnamed)', sub, haystack });
   });
-  (data.clients || []).forEach(c => {
-    const haystack = [c.name].filter(Boolean).join(' ').toLowerCase();
-    records.push({ id: c.id, bucket: 'timeentries', typeLabel: 'Client', done: c.active === false, title: c.name || '(unnamed)', sub: c.active === false ? 'inactive' : '', haystack });
-  });
-  (data.timeentries || []).forEach(e => {
-    const client = (data.clients || []).find(c => c.id === e.clientId);
-    const project = e.projectId ? projectsById[e.projectId] : null;
-    const haystack = [e.description, client && client.name, project && (project.text || project.title)].filter(Boolean).join(' ').toLowerCase();
-    const subParts = [];
-    if (client) subParts.push(client.name);
-    if (project) subParts.push('↳ ' + (project.text || project.title || '').slice(0, 40));
-    subParts.push((e.hours != null ? e.hours.toFixed(2) : '?') + ' hrs');
-    records.push({ id: e.id, bucket: 'timeentries', typeLabel: 'Time Entry', done: e.billingStatus === 'paid', title: (e.description || '(no description)').slice(0, 60), sub: subParts.join(' · '), haystack });
-  });
   return records;
 }
 
 // Display order for grouped search results — active/actionable types first.
-const SEARCH_TYPE_ORDER = ['Next Action', 'Waiting For', 'Project', 'Person', 'Time Entry', 'Client', 'Area of Focus', 'Goal', 'Someday/Maybe', 'Inbox', 'Session Log', 'Item'];
+const SEARCH_TYPE_ORDER = ['Next Action', 'Waiting For', 'Project', 'Person', 'Area of Focus', 'Goal', 'Someday/Maybe', 'Inbox', 'Session Log', 'Item'];
 let globalSearchIncludeDone = false;
 let globalSearchTypeFilter = null; // null = all types; else a Set of typeLabels to include
 
@@ -4329,15 +4133,6 @@ function quickAddOpen(kind) {
     const btn = document.querySelector('nav button[data-tab="people"]');
     if (btn) btn.click();
     setTimeout(() => { addPerson(); }, 60);
-  } else if (kind === 'timeentry') {
-    const btn = document.querySelector('nav button[data-tab="timeentries"]');
-    if (btn) btn.click();
-    setTimeout(() => {
-      const f = document.getElementById('form-timeentries');
-      if (f && !f.classList.contains('open')) toggleForm('timeentries');
-      const el = document.getElementById('te-date');
-      if (el) { if (!el.value) el.value = new Date().toISOString().slice(0, 10); el.focus(); }
-    }, 60);
   }
 }
 
@@ -4358,7 +4153,6 @@ function render() {
   renderFocus();
   renderAreas();
   renderPeople();
-  renderTimeEntries();
   ['inbox','next','projects','waiting'].forEach(b => {
     const el = document.querySelector(`.person-picker[data-picker="${b}"]`);
     if (el && !el.querySelector('.picker-add')) renderPersonPicker(b);
@@ -4368,7 +4162,6 @@ function render() {
   renderReview();
   populateProjectSelects();
   populateAreaSelects();
-  populateClientSelects();
   renderImportPreview();
   updateSaveButtonLabels();
 }
@@ -4394,8 +4187,6 @@ function renderCounts() {
   if (slEl) slEl.textContent = (data.sessionlog || []).length;
   const pplEl = document.getElementById('count-people');
   if (pplEl) pplEl.textContent = (data.people || []).filter(p => p.active !== false).length;
-  const teEl = document.getElementById('count-timeentries');
-  if (teEl) teEl.textContent = (data.timeentries || []).length;
 }
 
 function renderDashboard() {
@@ -5135,31 +4926,6 @@ function renderNext() {
               </div>
             </div>
           ` : ''}
-          ${addingTimeFor === n.id ? `
-            <div style="margin-top:10px;padding:10px 12px;background:#f9fafb;border:1px solid var(--border-strong);border-radius:6px;">
-              <label style="font-size:12px;color:var(--muted);font-weight:500;">⏱ Add time${n.clientId ? ' — ' + escapeHtml(((data.clients||[]).find(c=>c.id===n.clientId)||{}).name || '') : ''}</label>
-              <div class="form-row" style="margin-top:6px;">
-                <input type="date" id="add-time-date-listnext-${n.id}" value="${new Date().toISOString().slice(0,10)}" />
-              </div>
-              <div class="form-row" style="align-items:center;gap:14px;margin-top:4px;">
-                <label style="font-size:12px;display:flex;align-items:center;gap:4px;"><input type="radio" name="add-time-mode-listnext-${n.id}" value="duration" checked onchange="toggleAddTimeMode('listnext','${n.id}','duration')" /> Duration</label>
-                <label style="font-size:12px;display:flex;align-items:center;gap:4px;"><input type="radio" name="add-time-mode-listnext-${n.id}" value="range" onchange="toggleAddTimeMode('listnext','${n.id}','range')" /> Clock times</label>
-              </div>
-              <div class="form-row" id="add-time-duration-row-listnext-${n.id}" style="margin-top:6px;">
-                <input type="number" id="add-time-hours-listnext-${n.id}" placeholder="Hours (e.g. 1.5)" step="0.1" min="0" onkeydown="if(event.key==='Enter')submitAddTime('${n.id}','listnext')" />
-              </div>
-              <div class="form-row" id="add-time-range-row-listnext-${n.id}" style="display:none;margin-top:6px;align-items:center;">
-                <input type="time" id="add-time-start-listnext-${n.id}" onchange="recalcAddTimeRangeHours('listnext','${n.id}')" />
-                <input type="time" id="add-time-end-listnext-${n.id}" onchange="recalcAddTimeRangeHours('listnext','${n.id}')" />
-                <span id="add-time-range-display-listnext-${n.id}" style="font-size:12px;color:var(--muted);"></span>
-              </div>
-              <input type="text" id="add-time-desc-listnext-${n.id}" placeholder="Description (optional)" style="width:100%;margin-top:6px;padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;box-sizing:border-box;" onkeydown="if(event.key==='Enter')submitAddTime('${n.id}','listnext')" />
-              <div style="display:flex;gap:6px;margin-top:6px;">
-                <button class="btn" onclick="submitAddTime('${n.id}','listnext')">Add time</button>
-                <button class="btn secondary" onclick="cancelAddTime()">Cancel</button>
-              </div>
-            </div>
-          ` : ''}
           ${isPrompting ? `
             <div class="waiting-prompt">
               <label style="font-size:12px;color:var(--muted);font-weight:500;">Move to Waiting For — who are you waiting on?</label>
@@ -5178,7 +4944,6 @@ function renderNext() {
           ${!n.done ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('next','${n.id}','listnext')">📝 Add note</button>` : ''}
           ${!n.done ? `<button class="icon-btn" title="Add person" onclick="openItemPersonPicker('${n.id}', this)">👤 + Person</button>` : ''}
           <button class="icon-btn" title="Edit" onclick="startEdit('next','${n.id}')">✏️ Edit</button>
-          ${!n.done ? `<button class="icon-btn" title="Log billable time against this action" onclick="startAddTime('${n.id}','listnext')">⏱ Add time</button>` : ''}
           ${!n.done ? `<button class="icon-btn" title="Convert this Next Action into a multi-step Project (preserves all fields)" onclick="convertToProject('${n.id}')">↑ To Project</button>` : ''}
           <button class="btn danger" onclick="deleteItem('next','${n.id}')">${isDeleting('next', n.id) ? '⚠️ Click again' : 'Delete'}</button>
         </div>
@@ -5213,7 +4978,6 @@ function addNext() {
     text,
     context: document.getElementById('next-context').value,
     projectId: document.getElementById('next-project').value || null,
-    clientId: document.getElementById('next-client').value || null,
     priority: document.getElementById('next-priority').value,
     energy: document.getElementById('next-energy').value,
     dueDate: document.getElementById('next-due').value || null,
@@ -5237,7 +5001,6 @@ function addNext() {
   document.getElementById('next-notes').value = '';
   document.getElementById('next-due').value = '';
   document.getElementById('next-focus').value = '';
-  document.getElementById('next-client').value = '';
   initPersonPicker('next', []);
   toggleForm('next');
   save(); render();
@@ -5250,12 +5013,6 @@ function handleNextProjectChange(sel) {
     document.getElementById('new-project-title-inline').focus();
   } else {
     inlineDiv.style.display = 'none';
-  }
-  // Prepopulate (not lock) the client field from the project's own client, if set.
-  const clientEl = document.getElementById('next-client');
-  if (clientEl && sel.value && sel.value !== '__new__') {
-    const proj = data.projects.find(p => p.id === sel.value);
-    if (proj && proj.clientId) clientEl.value = proj.clientId;
   }
 }
 
@@ -5486,7 +5243,6 @@ function renderProjectCard(p) {
         </div>
       </div>
       ${renderItemPersonLine(p)}
-      ${p.clientId ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">🏢 ${escapeHtml(((data.clients||[]).find(c=>c.id===p.clientId)||{}).name || '(unknown client)')}</div>` : ''}
       ${p.outcome ? `<div class="outcome">${escapeHtml(p.outcome)}</div>` : ''}
       ${p.notes ? `<div class="item-notes">${linkifyNotes(p.notes)}</div>` : ''}
       ${addingNoteFor === 'projects:' + p.id ? `
@@ -5506,7 +5262,7 @@ function renderProjectCard(p) {
           ${p.status !== 'completed' && p.status !== 'done' ? `<button class="icon-btn" style="font-size:11px;text-transform:none;letter-spacing:0;font-weight:500;" onclick="startAddActionToProject('${p.id}')">${isAdding ? '✕ Cancel' : '+ Next Action'}</button>` : ''}
         </div>
         ${linked.length === 0 && !isAdding ? '<div class="next-action-empty">⚠ No next action — project is stalled. Add one to keep it moving.</div>' :
-          linked.length > 0 ? '<ul>' + linked.map(n => `<li class="${n.done ? 'done' : ''}" onclick="focusItem('${n.id}')" style="cursor:pointer;" title="Jump to this action in Next Actions">${escapeHtml(n.context)} — ${escapeHtml(n.text)}</li>`).join('') + '</ul>' : ''
+          linked.length > 0 ? '<ul>' + linked.map(n => `<li class="${n.done ? 'done' : ''}">${escapeHtml(n.context)} — ${escapeHtml(n.text)}</li>`).join('') + '</ul>' : ''
         }
         ${isAdding ? `
           <div class="add-action-inline">
@@ -5525,7 +5281,6 @@ function renderProjectCard(p) {
         </select>
         ${p.status !== 'completed' && p.status !== 'done' ? `<button class="icon-btn" title="Add timestamped note" onclick="startAddNote('projects','${p.id}')">📝 Add note</button>` : ''}
         ${p.status !== 'completed' && p.status !== 'done' ? `<button class="icon-btn" title="Add person" onclick="openItemPersonPicker('${p.id}', this)">👤 + Person</button>` : ''}
-        ${p.status !== 'completed' && p.status !== 'done' ? `<button class="icon-btn" title="Set client" onclick="openItemClientPicker('${p.id}', this)">🏢 ${p.clientId ? 'Change' : '+'} Client</button>` : ''}
         <button class="icon-btn" title="Edit project" onclick="startEdit('projects','${p.id}')">✏️ Edit</button>
         <button class="icon-btn" title="Convert this Project into a single Next Action (only allowed when no open linked actions remain)" onclick="convertToAction('${p.id}')">↓ To Action</button>
         <button class="btn danger" onclick="deleteItem('projects','${p.id}')">${isDeleting('projects', p.id) ? '⚠️ Click again' : 'Delete'}</button>
@@ -5548,7 +5303,6 @@ function addProject() {
     area: document.getElementById('project-area').value,
     status: document.getElementById('project-status').value,
     priority: document.getElementById('project-priority').value || 'med',
-    clientId: document.getElementById('project-client').value || null,
     notes: document.getElementById('project-notes').value.trim(),
     personIds
   };
@@ -5565,7 +5319,6 @@ function addProject() {
       }
       if (fields.outcome !== undefined) item.outcome = fields.outcome;
       if (fields.priority !== undefined) item.priority = fields.priority;
-      item.clientId = fields.clientId;
       if (fields.notes !== undefined) item.notes = fields.notes;
       item.personIds = personIds;
       syncBucketViews();
@@ -5575,7 +5328,6 @@ function addProject() {
   }
   ['project-title','project-outcome','project-notes'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('project-priority').value = 'med';
-  document.getElementById('project-client').value = '';
   initPersonPicker('projects', []);
   toggleForm('projects');
   save(); render();
@@ -6064,31 +5816,6 @@ function renderFocus() {
                 </div>
               </div>
             ` : ''}
-            ${addingTimeFor === it.id ? `
-              <div style="margin-top:10px;padding:10px 12px;background:#f9fafb;border:1px solid var(--border-strong);border-radius:6px;">
-                <label style="font-size:12px;color:var(--muted);font-weight:500;">⏱ Add time${it.clientId ? ' — ' + escapeHtml(((data.clients||[]).find(c=>c.id===it.clientId)||{}).name || '') : ''}</label>
-                <div class="form-row" style="margin-top:6px;">
-                  <input type="date" id="add-time-date-listfocus-${it.id}" value="${new Date().toISOString().slice(0,10)}" />
-                </div>
-                <div class="form-row" style="align-items:center;gap:14px;margin-top:4px;">
-                  <label style="font-size:12px;display:flex;align-items:center;gap:4px;"><input type="radio" name="add-time-mode-listfocus-${it.id}" value="duration" checked onchange="toggleAddTimeMode('listfocus','${it.id}','duration')" /> Duration</label>
-                  <label style="font-size:12px;display:flex;align-items:center;gap:4px;"><input type="radio" name="add-time-mode-listfocus-${it.id}" value="range" onchange="toggleAddTimeMode('listfocus','${it.id}','range')" /> Clock times</label>
-                </div>
-                <div class="form-row" id="add-time-duration-row-listfocus-${it.id}" style="margin-top:6px;">
-                  <input type="number" id="add-time-hours-listfocus-${it.id}" placeholder="Hours (e.g. 1.5)" step="0.1" min="0" onkeydown="if(event.key==='Enter')submitAddTime('${it.id}','listfocus')" />
-                </div>
-                <div class="form-row" id="add-time-range-row-listfocus-${it.id}" style="display:none;margin-top:6px;align-items:center;">
-                  <input type="time" id="add-time-start-listfocus-${it.id}" onchange="recalcAddTimeRangeHours('listfocus','${it.id}')" />
-                  <input type="time" id="add-time-end-listfocus-${it.id}" onchange="recalcAddTimeRangeHours('listfocus','${it.id}')" />
-                  <span id="add-time-range-display-listfocus-${it.id}" style="font-size:12px;color:var(--muted);"></span>
-                </div>
-                <input type="text" id="add-time-desc-listfocus-${it.id}" placeholder="Description (optional)" style="width:100%;margin-top:6px;padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;box-sizing:border-box;" onkeydown="if(event.key==='Enter')submitAddTime('${it.id}','listfocus')" />
-                <div style="display:flex;gap:6px;margin-top:6px;">
-                  <button class="btn" onclick="submitAddTime('${it.id}','listfocus')">Add time</button>
-                  <button class="btn secondary" onclick="cancelAddTime()">Cancel</button>
-                </div>
-              </div>
-            ` : ''}
           </div>
           <div class="item-actions">
             ${renderStatusDropdown(it)}
@@ -6098,7 +5825,6 @@ function renderFocus() {
             ${!isDone ? `<button class="icon-btn" title="Add person" onclick="openItemPersonPicker('${it.id}', this)">👤 + Person</button>` : ''}
             <button class="icon-btn" title="Clear focus date" onclick="clearFocusDate('${it.id}')">🗑 Clear focus</button>
             <button class="icon-btn" title="Edit" onclick="startEdit('next','${it.id}')">✏️ Edit</button>
-            ${!isDone ? `<button class="icon-btn" title="Log billable time against this action" onclick="startAddTime('${it.id}','listfocus')">⏱ Add time</button>` : ''}
             ${!isDone ? `<button class="icon-btn" title="Convert this Next Action into a multi-step Project (preserves all fields)" onclick="convertToProject('${it.id}')">↑ To Project</button>` : ''}
             <button class="btn danger" onclick="deleteItem('next','${it.id}')">${isDeleting('next', it.id) ? '⚠️ Click again' : 'Delete'}</button>
           </div>
@@ -6547,102 +6273,6 @@ function initPersonPicker(bucket, ids) {
 // Inline per-item picker + person-tag display on cards
 // -----------------------------------------------------------------
 let inlineItemPickerFor = null; // { id }
-
-// Single-value client picker (mirrors the Person picker's popover pattern,
-// but setting a client REPLACES any existing one rather than appending,
-// since an item has at most one client, not a list of them).
-let inlineClientPickerFor = null; // { id: itemId }
-function openItemClientPicker(itemId, buttonEl) {
-  closeItemClientPicker();
-  closeItemPersonPicker();
-  inlineClientPickerFor = { id: itemId };
-  const dropdown = document.createElement('div');
-  dropdown.id = 'inline-client-picker';
-  dropdown.style.cssText = 'position:absolute;z-index:1000;background:var(--surface);border:1px solid var(--border-strong);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,0.14);padding:6px;width:280px;max-height:320px;overflow-y:auto;';
-  dropdown.innerHTML = `
-    <input type="text" class="picker-search" placeholder="Search clients..." oninput="filterInlineClientPickerOptions(this.value)" />
-    <div id="inline-client-picker-options"></div>
-  `;
-  document.body.appendChild(dropdown);
-  const rect = buttonEl.getBoundingClientRect();
-  const dropW = 280;
-  const leftPref = rect.left + window.scrollX;
-  const leftMax = window.scrollX + window.innerWidth - dropW - 8;
-  dropdown.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
-  dropdown.style.left = Math.max(8, Math.min(leftPref, leftMax)) + 'px';
-  dropdown.querySelector('input').focus();
-  filterInlineClientPickerOptions('');
-  setTimeout(() => {
-    document.addEventListener('click', function outside(e) {
-      const d = document.getElementById('inline-client-picker');
-      if (!d) { document.removeEventListener('click', outside); return; }
-      if (!d.contains(e.target)) { closeItemClientPicker(); document.removeEventListener('click', outside); }
-    });
-  }, 0);
-}
-function closeItemClientPicker() {
-  const el = document.getElementById('inline-client-picker');
-  if (el) el.remove();
-  inlineClientPickerFor = null;
-}
-function filterInlineClientPickerOptions(term) {
-  const list = document.getElementById('inline-client-picker-options');
-  if (!list || !inlineClientPickerFor) return;
-  const item = (data.items || []).find(x => x.id === inlineClientPickerFor.id);
-  if (!item) return;
-  const raw = (term || '').trim();
-  const t = raw.toLowerCase();
-  const candidates = (data.clients || [])
-    .filter(c => c.active !== false)
-    .filter(c => c.id !== item.clientId)
-    .filter(c => !t || (c.name || '').toLowerCase().includes(t))
-    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-    .slice(0, 30);
-  const exactMatch = raw && (data.clients || []).some(c => (c.name || '').toLowerCase() === t);
-  let html = '';
-  if (item.clientId) {
-    const current = (data.clients || []).find(c => c.id === item.clientId);
-    html += `
-      <div class="picker-opt" style="color:#991b1b;" onclick="setClientForItem(null)">
-        <span>✕ Clear client${current ? ' (' + escapeHtml(current.name) + ')' : ''}</span>
-      </div>
-    `;
-  }
-  html += candidates.map(c => `
-    <div class="picker-opt" onclick="setClientForItem('${c.id}')">
-      <span>${escapeHtml(c.name)}</span>
-    </div>
-  `).join('');
-  if (raw && !exactMatch) {
-    html += `
-      <div class="picker-opt" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:8px;color:var(--accent);" data-new-name="${escapeHtml(raw)}" onclick="createAndSetClientForItem(this.dataset.newName)">
-        <span>+ Add "${escapeHtml(raw)}" as new client</span>
-      </div>
-    `;
-  }
-  if (!html) html = `<div style="padding:8px 10px;font-size:12px;color:var(--muted);">Type a name to search or add.</div>`;
-  list.innerHTML = html;
-}
-function createAndSetClientForItem(name) {
-  const trimmed = (name || '').trim();
-  if (!trimmed || !inlineClientPickerFor) return;
-  if (!data.clients) data.clients = [];
-  const c = { id: uid('c'), name: trimmed, active: true, created: new Date().toISOString().slice(0, 10) };
-  data.clients.push(c);
-  const item = (data.items || []).find(x => x.id === inlineClientPickerFor.id);
-  if (item) item.clientId = c.id;
-  closeItemClientPicker();
-  save(); render();
-  showToast(`Set client to ${c.name}`);
-}
-function setClientForItem(clientId) {
-  if (!inlineClientPickerFor) return;
-  const item = (data.items || []).find(x => x.id === inlineClientPickerFor.id);
-  if (!item) return;
-  item.clientId = clientId || null;
-  closeItemClientPicker();
-  save(); render();
-}
 
 function openItemPersonPicker(itemId, buttonEl) {
   closeItemPersonPicker();
@@ -7518,8 +7148,6 @@ function deleteItem(bucket, id) {
       // Areas are still a first-class array (not in data.items)
       data.areas = (data.areas || []).filter(x => x.id !== id);
       syncBucketViews();
-    } else if (bucket === 'timeentries') {
-      data.timeentries = (data.timeentries || []).filter(x => x.id !== id);
     } else {
       removeItemById(id);
     }
@@ -7606,7 +7234,6 @@ function populateForm(bucket, item) {
     document.getElementById('next-due').value = item.dueDate || '';
     document.getElementById('next-focus').value = item.focusDate || '';
     document.getElementById('next-notes').value = item.notes || '';
-    document.getElementById('next-client').value = item.clientId || '';
     initPersonPicker('next', item.personIds || []);
   } else if (bucket === 'projects') {
     document.getElementById('project-title').value = item.title || '';
@@ -7614,7 +7241,6 @@ function populateForm(bucket, item) {
     document.getElementById('project-area').value = item.area || '';
     document.getElementById('project-status').value = item.status || 'active';
     document.getElementById('project-priority').value = item.priority || 'med';
-    document.getElementById('project-client').value = item.clientId || '';
     document.getElementById('project-notes').value = item.notes || '';
     initPersonPicker('projects', item.personIds || []);
   } else if (bucket === 'waiting') {
@@ -7650,27 +7276,12 @@ function populateForm(bucket, item) {
     document.getElementById('sessionlog-body').value = item.body || '';
     document.getElementById('sessionlog-tags').value = (item.tags || []).join(', ');
     document.getElementById('sessionlog-author').value = item.author || '';
-  } else if (bucket === 'timeentries') {
-    document.getElementById('te-date').value = item.date || '';
-    document.getElementById('te-client').value = item.clientId || '';
-    populateTeProjectSelect();
-    document.getElementById('te-project').value = item.projectId || '';
-    populateTeActionSelect();
-    document.getElementById('te-action').value = item.actionId || '';
-    const mode = item.mode || 'duration';
-    document.querySelector(`input[name="te-mode"][value="${mode}"]`).checked = true;
-    toggleTeMode(mode);
-    document.getElementById('te-start').value = item.startTime || '';
-    document.getElementById('te-end').value = item.endTime || '';
-    document.getElementById('te-duration').value = item.hours != null ? item.hours : '';
-    document.getElementById('te-description').value = item.description || '';
-    document.getElementById('te-billing').value = item.billingStatus || 'unbilled';
   }
 }
 
 // Update each form's primary button to read "Save changes" when in edit mode, "Add" otherwise.
 const SAVE_BUTTON_DEFAULTS = {
-  inbox: 'Add to Inbox', next: 'Add', projects: 'Add', waiting: 'Add', calendar: 'Add', someday: 'Add', areas: 'Add', sessionlog: 'Add', timeentries: 'Add'
+  inbox: 'Add to Inbox', next: 'Add', projects: 'Add', waiting: 'Add', calendar: 'Add', someday: 'Add', areas: 'Add', sessionlog: 'Add'
 };
 function updateSaveButtonLabels() {
   Object.keys(SAVE_BUTTON_DEFAULTS).forEach(bucket => {
@@ -7711,367 +7322,6 @@ function populateAreaSelects() {
   const el = document.getElementById('project-area');
   if (el) el.innerHTML = opts;
 }
-function populateClientSelects() {
-  const active = (data.clients || []).filter(c => c.active !== false).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  const opts = '<option value="">— Client —</option>' + active.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('') +
-    '<option value="__newclient__" style="color:var(--accent,#2563eb);font-style:italic;">＋ Create new client…</option>';
-  ['project-client', 'next-client', 'te-client'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const prev = el.value;
-    el.innerHTML = opts;
-    if (prev && active.some(c => c.id === prev)) el.value = prev;
-  });
-}
-
-// Shared by every client <select> (Project form, Next Action form, Time
-// Entry form) -- lets you create a client inline instead of needing to go
-// to the Time Entries tab's "Manage Clients" panel first.
-function handleClientSelectChange(selectEl) {
-  if (selectEl.value !== '__newclient__') return;
-  const name = prompt('New client name:');
-  if (name && name.trim()) {
-    if (!data.clients) data.clients = [];
-    const client = { id: uid('c'), name: name.trim(), active: true, created: new Date().toISOString().slice(0, 10) };
-    data.clients.push(client);
-    save();
-    populateClientSelects(); // refreshes options (including the new one) on all three selects
-    selectEl.value = client.id;
-  } else {
-    selectEl.value = '';
-  }
-}
-
-// =================================================================
-// CLIENTS (for billable Time Entries)
-// =================================================================
-function addClient() {
-  const nameEl = document.getElementById('te-new-client-name');
-  const name = nameEl.value.trim();
-  if (!name) return;
-  if (!data.clients) data.clients = [];
-  data.clients.push({ id: uid('c'), name, active: true, created: new Date().toISOString().slice(0, 10) });
-  nameEl.value = '';
-  save(); render();
-}
-function renameClient(id) {
-  const c = (data.clients || []).find(x => x.id === id);
-  if (!c) return;
-  const newName = prompt('Rename client', c.name);
-  if (newName && newName.trim()) { c.name = newName.trim(); save(); render(); }
-}
-function toggleClientActive(id) {
-  const c = (data.clients || []).find(x => x.id === id);
-  if (c) { c.active = c.active === false ? true : false; save(); render(); }
-}
-function renderClientsListPanel() {
-  const el = document.getElementById('te-clients-list');
-  if (!el) return;
-  const clients = (data.clients || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  if (!clients.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px;">No clients yet — add one above.</div>'; return; }
-  el.innerHTML = clients.map(c => `
-    <div data-item-id="${escapeHtml(c.id)}" style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;${c.active === false ? 'opacity:0.5;' : ''}">
-      <span style="flex:1;">${escapeHtml(c.name)}${c.active === false ? ' (inactive)' : ''}</span>
-      <button class="icon-btn" onclick="renameClient('${c.id}')">✏️ Rename</button>
-      <button class="icon-btn" onclick="toggleClientActive('${c.id}')">${c.active === false ? 'Reactivate' : 'Deactivate'}</button>
-      <button class="btn danger" onclick="deleteItem('clients','${c.id}')">${isDeleting('clients', c.id) ? '⚠️ Click again' : 'Delete'}</button>
-    </div>
-  `).join('');
-}
-
-// =================================================================
-// TIME ENTRIES (billable work against clients/projects/actions)
-// =================================================================
-function populateTeProjectSelect() {
-  const prio = { high: 0, med: 1, low: 2 };
-  const sorted = (data.projects || []).slice().sort((a, b) => {
-    const ap = prio[a.priority || 'med'], bp = prio[b.priority || 'med'];
-    if (ap !== bp) return ap - bp;
-    return (a.title || '').localeCompare(b.title || '');
-  });
-  const opts = '<option value="">— No project —</option>' + sorted.map(p => `<option value="${p.id}">${escapeHtml(p.title || '')}</option>`).join('');
-  const el = document.getElementById('te-project');
-  if (el) {
-    const prev = el.value;
-    el.innerHTML = opts;
-    if (prev && sorted.some(p => p.id === prev)) el.value = prev;
-  }
-}
-
-function populateTeActionSelect() {
-  const projectId = document.getElementById('te-project') ? document.getElementById('te-project').value : '';
-  let actions = (data.items || []).filter(it => it.kind === 'action' && it.status !== 'done' && (!projectId || it.projectId === projectId));
-  actions = actions.slice().sort((a, b) => (a.text || '').localeCompare(b.text || ''));
-  const opts = '<option value="">— No action —</option>' + actions.map(a => `<option value="${a.id}">${escapeHtml((a.text || '').slice(0, 60))}</option>`).join('');
-  const el = document.getElementById('te-action');
-  if (el) {
-    const prev = el.value;
-    el.innerHTML = opts;
-    if (prev && actions.some(a => a.id === prev)) el.value = prev;
-  }
-}
-
-function handleTeProjectChange(sel) {
-  populateTeActionSelect();
-  const clientEl = document.getElementById('te-client');
-  if (sel.value && clientEl) {
-    const proj = (data.projects || []).find(p => p.id === sel.value);
-    if (proj && proj.clientId) clientEl.value = proj.clientId;
-  }
-}
-
-// Inline "Add Time" on a Next Action's own card -- mirrors the Add Note
-// pattern exactly (expand in place, log it, done; no tab navigation).
-// `source` disambiguates DOM ids between Next Actions and Focus, which both
-// render the same action and would otherwise collide (same issue Add Note
-// hit before it was fixed).
-let addingTimeFor = null; // an action id, or null
-function startAddTime(actionId, source) {
-  source = source || 'listnext';
-  if (addingTimeFor === actionId) { addingTimeFor = null; render(); return; }
-  addingTimeFor = actionId;
-  render();
-  setTimeout(() => {
-    const el = document.getElementById('add-time-hours-' + source + '-' + actionId);
-    if (el) el.focus();
-  }, 50);
-}
-function cancelAddTime() {
-  addingTimeFor = null;
-  render();
-}
-function toggleAddTimeMode(source, actionId, mode) {
-  const durRow = document.getElementById('add-time-duration-row-' + source + '-' + actionId);
-  const rangeRow = document.getElementById('add-time-range-row-' + source + '-' + actionId);
-  if (durRow) durRow.style.display = mode === 'duration' ? 'flex' : 'none';
-  if (rangeRow) rangeRow.style.display = mode === 'range' ? 'flex' : 'none';
-}
-function recalcAddTimeRangeHours(source, actionId) {
-  const start = document.getElementById('add-time-start-' + source + '-' + actionId).value;
-  const end = document.getElementById('add-time-end-' + source + '-' + actionId).value;
-  const display = document.getElementById('add-time-range-display-' + source + '-' + actionId);
-  const hours = computeHoursFromRange(start, end);
-  if (display) display.textContent = hours != null ? (hours.toFixed(2) + ' hrs') : (start && end ? 'End must be after start' : '');
-}
-function submitAddTime(actionId, source) {
-  source = source || 'listnext';
-  const dateEl = document.getElementById('add-time-date-' + source + '-' + actionId);
-  const descEl = document.getElementById('add-time-desc-' + source + '-' + actionId);
-  if (!dateEl || !descEl) return;
-  const date = dateEl.value || new Date().toISOString().slice(0, 10);
-  const modeRadio = document.querySelector('input[name="add-time-mode-' + source + '-' + actionId + '"]:checked');
-  const mode = modeRadio ? modeRadio.value : 'duration';
-  let hours, startTime = null, endTime = null;
-  if (mode === 'range') {
-    startTime = document.getElementById('add-time-start-' + source + '-' + actionId).value || null;
-    endTime = document.getElementById('add-time-end-' + source + '-' + actionId).value || null;
-    hours = computeHoursFromRange(startTime, endTime);
-    if (hours == null) { alert('Enter a valid start and end time (end must be after start).'); return; }
-  } else {
-    hours = parseFloat(document.getElementById('add-time-hours-' + source + '-' + actionId).value);
-    if (!hours || hours <= 0) { alert('Enter a valid number of hours.'); return; }
-  }
-  const description = descEl.value.trim();
-  const action = (data.items || []).find(it => it.id === actionId);
-  if (!data.timeentries) data.timeentries = [];
-  data.timeentries.push({
-    id: uid('te'), date,
-    clientId: action ? action.clientId : null,
-    projectId: action ? action.projectId : null,
-    actionId, mode, startTime, endTime, hours, description,
-    billingStatus: 'unbilled', created: new Date().toISOString().slice(0, 10)
-  });
-  addingTimeFor = null;
-  save(); render();
-}
-
-function handleTeActionChange(sel) {
-  const clientEl = document.getElementById('te-client');
-  if (sel.value && clientEl) {
-    const action = (data.items || []).find(it => it.id === sel.value);
-    if (action && action.clientId) clientEl.value = action.clientId;
-  }
-}
-
-function toggleTeMode(mode) {
-  const rangeRow = document.getElementById('te-range-row');
-  const durationRow = document.getElementById('te-duration-row');
-  if (rangeRow) rangeRow.style.display = mode === 'range' ? 'flex' : 'none';
-  if (durationRow) durationRow.style.display = mode === 'duration' ? 'flex' : 'none';
-}
-
-function computeHoursFromRange(start, end) {
-  if (!start || !end) return null;
-  const [sh, sm] = start.split(':').map(Number);
-  const [eh, em] = end.split(':').map(Number);
-  const mins = (eh * 60 + em) - (sh * 60 + sm);
-  if (mins <= 0) return null; // end must be after start -- no overnight-span guessing
-  return mins / 60;
-}
-
-function recalcTeRangeHours() {
-  const start = document.getElementById('te-start').value;
-  const end = document.getElementById('te-end').value;
-  const display = document.getElementById('te-range-hours-display');
-  const hours = computeHoursFromRange(start, end);
-  if (display) display.textContent = hours != null ? (hours.toFixed(2) + ' hours') : (start && end ? 'End must be after start' : '');
-}
-
-function saveTimeEntry() {
-  const date = document.getElementById('te-date').value || new Date().toISOString().slice(0, 10);
-  const clientId = document.getElementById('te-client').value || null;
-  const projectId = document.getElementById('te-project').value || null;
-  const actionId = document.getElementById('te-action').value || null;
-  const mode = document.querySelector('input[name="te-mode"]:checked').value;
-  let hours, startTime = null, endTime = null;
-  if (mode === 'range') {
-    startTime = document.getElementById('te-start').value || null;
-    endTime = document.getElementById('te-end').value || null;
-    hours = computeHoursFromRange(startTime, endTime);
-    if (hours == null) { alert('Enter a valid start and end time (end must be after start).'); return; }
-  } else {
-    hours = parseFloat(document.getElementById('te-duration').value);
-    if (!hours || hours <= 0) { alert('Enter a valid number of hours.'); return; }
-  }
-  const description = document.getElementById('te-description').value.trim();
-  const billingStatus = document.getElementById('te-billing').value || 'unbilled';
-
-  const editId = editingId['timeentries'];
-  if (editId) {
-    const entry = (data.timeentries || []).find(x => x.id === editId);
-    if (entry) Object.assign(entry, { date, clientId, projectId, actionId, mode, startTime, endTime, hours, description, billingStatus });
-  } else {
-    if (!data.timeentries) data.timeentries = [];
-    data.timeentries.push({
-      id: uid('te'), date, clientId, projectId, actionId, mode, startTime, endTime, hours, description, billingStatus,
-      created: new Date().toISOString().slice(0, 10)
-    });
-  }
-  document.getElementById('te-date').value = '';
-  document.getElementById('te-client').value = '';
-  document.getElementById('te-project').value = '';
-  populateTeActionSelect();
-  document.getElementById('te-action').value = '';
-  const durationRadio = document.querySelector('input[name="te-mode"][value="duration"]');
-  if (durationRadio) durationRadio.checked = true;
-  toggleTeMode('duration');
-  document.getElementById('te-start').value = '';
-  document.getElementById('te-end').value = '';
-  document.getElementById('te-duration').value = '';
-  document.getElementById('te-description').value = '';
-  document.getElementById('te-billing').value = 'unbilled';
-  toggleForm('timeentries');
-  save(); render();
-}
-
-function cycleTeBillingStatus(id) {
-  const e = (data.timeentries || []).find(x => x.id === id);
-  if (!e) return;
-  const order = ['unbilled', 'invoiced', 'paid'];
-  const idx = order.indexOf(e.billingStatus || 'unbilled');
-  e.billingStatus = order[(idx + 1) % order.length];
-  save(); render();
-}
-
-let teFilterClient = '';
-let teFilterBilling = '';
-let teFilterRange = 'all'; // all | week | month | custom
-let teFilterFrom = '';
-let teFilterTo = '';
-function setTeFilterClient(v) { teFilterClient = v; renderTimeEntries(); }
-function setTeFilterBilling(v) { teFilterBilling = v; renderTimeEntries(); }
-function setTeFilterRange(v) { teFilterRange = v; renderTimeEntries(); }
-function setTeFilterFrom(v) { teFilterFrom = v; renderTimeEntries(); }
-function setTeFilterTo(v) { teFilterTo = v; renderTimeEntries(); }
-
-function teMatchesFilters(e) {
-  if (teFilterClient && e.clientId !== teFilterClient) return false;
-  if (teFilterBilling && e.billingStatus !== teFilterBilling) return false;
-  if (teFilterRange === 'week') {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 6);
-    if (e.date < cutoff.toISOString().slice(0, 10)) return false;
-  } else if (teFilterRange === 'month') {
-    const ym = new Date().toISOString().slice(0, 7);
-    if (!e.date || !e.date.startsWith(ym)) return false;
-  } else if (teFilterRange === 'custom') {
-    if (teFilterFrom && e.date < teFilterFrom) return false;
-    if (teFilterTo && e.date > teFilterTo) return false;
-  }
-  return true;
-}
-
-function renderTimeEntries() {
-  renderClientsListPanel();
-  populateTeProjectSelect();
-  populateTeActionSelect();
-
-  const filterEl = document.getElementById('te-filter-row');
-  const summaryEl = document.getElementById('te-summary-line');
-  const listEl = document.getElementById('list-timeentries');
-  if (!listEl) return;
-
-  const clients = (data.clients || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  if (filterEl) {
-    filterEl.innerHTML = `
-      <select onchange="setTeFilterClient(this.value)">
-        <option value="">All clients</option>
-        ${clients.map(c => `<option value="${c.id}" ${teFilterClient === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
-      </select>
-      <select onchange="setTeFilterRange(this.value)">
-        <option value="all" ${teFilterRange === 'all' ? 'selected' : ''}>All time</option>
-        <option value="week" ${teFilterRange === 'week' ? 'selected' : ''}>Last 7 days</option>
-        <option value="month" ${teFilterRange === 'month' ? 'selected' : ''}>This month</option>
-        <option value="custom" ${teFilterRange === 'custom' ? 'selected' : ''}>Custom range</option>
-      </select>
-      ${teFilterRange === 'custom' ? `
-        <input type="date" value="${teFilterFrom}" onchange="setTeFilterFrom(this.value)" title="From" />
-        <input type="date" value="${teFilterTo}" onchange="setTeFilterTo(this.value)" title="To" />
-      ` : ''}
-      <select onchange="setTeFilterBilling(this.value)">
-        <option value="">All statuses</option>
-        <option value="unbilled" ${teFilterBilling === 'unbilled' ? 'selected' : ''}>Unbilled</option>
-        <option value="invoiced" ${teFilterBilling === 'invoiced' ? 'selected' : ''}>Invoiced</option>
-        <option value="paid" ${teFilterBilling === 'paid' ? 'selected' : ''}>Paid</option>
-      </select>
-    `;
-  }
-
-  const all = (data.timeentries || []).filter(teMatchesFilters).slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  const totalHours = all.reduce((sum, e) => sum + (e.hours || 0), 0);
-  if (summaryEl) summaryEl.textContent = all.length ? `${totalHours.toFixed(2)} hours across ${all.length} ${all.length === 1 ? 'entry' : 'entries'}` : 'No time entries match these filters.';
-
-  if (!all.length) { listEl.innerHTML = ''; return; }
-
-  const billingBg = { unbilled: '#fef3c7', invoiced: '#dbeafe', paid: '#d1fae5' };
-  const billingColor = { unbilled: '#92400e', invoiced: '#1e40af', paid: '#065f46' };
-
-  listEl.innerHTML = all.map(e => {
-    const client = (data.clients || []).find(c => c.id === e.clientId);
-    const project = e.projectId ? (data.projects || []).find(p => p.id === e.projectId) : null;
-    const action = e.actionId ? (data.items || []).find(it => it.id === e.actionId) : null;
-    const bs = e.billingStatus || 'unbilled';
-    return `
-      <div class="item" data-item-id="${escapeHtml(e.id)}">
-        <div class="item-body">
-          <div class="item-text">${e.hours != null ? e.hours.toFixed(2) : '?'} hrs — ${client ? escapeHtml(client.name) : '<span style="color:var(--muted);">No client</span>'}</div>
-          <div class="item-meta">
-            <span class="chip id">#${escapeHtml(e.id)}</span>
-            <span class="chip">${escapeHtml(e.date || '')}</span>
-            ${project ? `<span class="chip project" onclick="focusItem('${project.id}')" style="cursor:pointer;">↳ ${escapeHtml((project.title || '').slice(0, 40))}</span>` : ''}
-            ${action ? `<span class="chip" onclick="focusItem('${action.id}')" style="cursor:pointer;">→ ${escapeHtml((action.text || '').slice(0, 40))}</span>` : ''}
-            <span class="chip" onclick="cycleTeBillingStatus('${e.id}')" style="cursor:pointer;background:${billingBg[bs]};color:${billingColor[bs]};" title="Click to change status">${bs}</span>
-          </div>
-          ${e.description ? `<div class="item-notes">${linkifyNotes(e.description)}</div>` : ''}
-        </div>
-        <div class="item-actions">
-          <button class="icon-btn" title="Edit" onclick="startEdit('timeentries','${e.id}')">✏️ Edit</button>
-          <button class="btn danger" onclick="deleteItem('timeentries','${e.id}')">${isDeleting('timeentries', e.id) ? '⚠️ Click again' : 'Delete'}</button>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
 
 // quick capture: enter key
 document.getElementById('quickCaptureInput').addEventListener('keydown', e => {
@@ -8092,15 +7342,9 @@ function setBootMsg(msg) {
 async function bootstrap() {
   syncBucketViews();
   try {
-    // If Drive sync is configured, actually load from Drive on page start.
-    // Prior behavior only loaded from localStorage, which meant cloudLastModifiedTime
-    // never got set and the Phase 6b write-guard couldn't detect out-of-band edits.
+    // If Drive sync is configured, initDriveOnLoad handles everything — skip FSA bootstrap
     if (localStorage.getItem(STORAGE_KEY + ':gdriveFileId')) {
-      setBootMsg('Loading from Drive…');
-      await initDriveOnLoad();
       hideBootLoading();
-      render();
-      restoreTab();
       return;
     }
     if (!fsaSupported()) {
@@ -8207,10 +7451,6 @@ function updateMobileBadges() {
     ['count-calendar',   'mob-count-calendar2'],
     ['count-someday',    'mob-count-someday2'],
     ['count-sessionlog', 'mob-count-sessionlog2'],
-    ['count-focus',      'mob-count-focus2'],
-    ['count-done',       'mob-count-done2'],
-    ['count-people',     'mob-count-people2'],
-    ['count-timeentries','mob-count-timeentries2'],
   ];
   pairs.forEach(([src, dest]) => {
     const srcEl  = document.getElementById(src);
@@ -8265,22 +7505,6 @@ render = function(...args) {
 <div id="mobile-more-overlay" onclick="closeMobileMore()"></div>
 <div id="mobile-more-drawer" role="dialog" aria-label="More navigation">
   <div class="drawer-handle"></div>
-  <button onclick="toggleQuickAddMenu();closeMobileMore();">
-    <span class="drawer-icon">＋</span> Quick Add…
-  </button>
-  <button onclick="toggleGlobalSearch();closeMobileMore();">
-    <span class="drawer-icon">🔍</span> Search
-  </button>
-  <div class="drawer-divider"></div>
-  <div class="drawer-section-label">Capture</div>
-  <button onclick="mobileNav('briefing')">
-    <span class="drawer-icon">☀️</span> Morning Brief
-  </button>
-  <button onclick="mobileNav('focus')">
-    <span class="drawer-icon">🎯</span> Focus
-    <span class="drawer-badge" id="mob-count-focus2"></span>
-  </button>
-  <div class="drawer-divider"></div>
   <div class="drawer-section-label">Lists</div>
   <button onclick="mobileNav('waiting')">
     <span class="drawer-icon">⏳</span> Waiting For
@@ -8294,23 +7518,11 @@ render = function(...args) {
     <span class="drawer-icon">💡</span> Someday / Maybe
     <span class="drawer-badge" id="mob-count-someday2"></span>
   </button>
-  <button onclick="mobileNav('done')">
-    <span class="drawer-icon">✔️</span> Done
-    <span class="drawer-badge" id="mob-count-done2"></span>
-  </button>
   <button onclick="mobileNav('areas')">
     <span class="drawer-icon">🎯</span> Areas of Focus
   </button>
   <button onclick="mobileNav('horizons')">
     <span class="drawer-icon">🔭</span> Goals &amp; Horizons
-  </button>
-  <button onclick="mobileNav('people')">
-    <span class="drawer-icon">👥</span> People
-    <span class="drawer-badge" id="mob-count-people2"></span>
-  </button>
-  <button onclick="mobileNav('timeentries')">
-    <span class="drawer-icon">⏱</span> Time Entries
-    <span class="drawer-badge" id="mob-count-timeentries2"></span>
   </button>
   <div class="drawer-divider"></div>
   <div class="drawer-section-label">Reflect</div>
